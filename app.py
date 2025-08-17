@@ -699,6 +699,18 @@ sample_custom = pd.DataFrame({
 csv_custom = sample_custom.to_csv(index=False).encode('utf-8')
 st.sidebar.download_button("Download Sample Custom Tasks CSV", csv_custom, "sample_custom_tasks.csv", "text/csv")
 
+# Initialize state variables
+uploaded_timekeepers = st.sidebar.file_uploader("Upload Timekeeper CSV", type="csv")
+timekeeper_data = _load_timekeepers(uploaded_timekeepers)
+uploaded_custom_tasks = st.sidebar.file_uploader("Upload Custom Tasks CSV", type="csv")
+custom_task_activity_desc = _load_custom_task_activity_data(uploaded_custom_tasks)
+if custom_task_activity_desc:
+    task_activity_desc = custom_task_activity_desc
+else:
+    task_activity_desc = CONFIG['DEFAULT_TASK_ACTIVITY_DESC']
+    
+send_email = st.checkbox("Send Email", value=False, help="Enable this to send invoices as an email attachment.")
+
 # Dynamic Tabs
 tabs = ["Invoice Inputs", "Advanced Settings"]
 if send_email:
