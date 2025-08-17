@@ -163,7 +163,7 @@ DEFAULT_CLIENT_ID = "02-4388252"
 DEFAULT_LAW_FIRM_ID = "02-1234567"
 DEFAULT_INVOICE_DESCRIPTION = "Monthly Legal Services"
 
-# --- New Validation Helpers ---
+# --- Validation Helpers ---
 def _is_valid_client_id(client_id: str) -> bool:
     """Validate Client ID format (XX-XXXXXXX)."""
     pattern = r"^\d{2}-\d{7}$"
@@ -181,7 +181,6 @@ def _calculate_max_fees(timekeeper_data: Optional[List[Dict]], billing_start_dat
     num_timekeepers = len(timekeeper_data)
     delta = billing_end_date - billing_start_date
     num_days = max(1, delta.days + 1)
-    # Assume each timekeeper can bill max_daily_hours per day, with 0.5-hour minimum per line
     max_lines = int((num_timekeepers * num_days * max_daily_hours) / 0.5)
     return max(1, min(200, max_lines))
 
@@ -653,24 +652,27 @@ with tab2:
     st.header("Generation Settings")
     spend_agent = st.checkbox("Spend Agent", value=False, help="Ensures 2 Fee + 1 Expense Line Items are included for Spend Agent; Slider counts will be adjusted.")
     
-    # Calculate max fees dynamically
-    max_fees = _calculate_max_fees(timekeeper_data, billing_start_date, billing_end_date, 16)
-    st.caption(f"Maximum fee lines allowed: {max_fees} (based on timekeepers and billing period)")
-    fees = st.slider(
-        "Number of Fee Line Items", 
-        min_value=1, 
-        max_value=max_fees, 
-        value=min(20, max_fees), 
-        format="%d"
-    )
-    st.caption("Number of expense line items to generate")
-    expenses = st.slider(
-        "Number of Expense Line Items", 
-        min_value=0, 
-        max_value=50, 
-        value=5, 
-        format="%d"
-    )
+    if timekeeper_data is None:
+        st.error("Please upload a valid timekeeper CSV file to configure fee and expense settings.")
+    else:
+        # Calculate max fees dynamically
+        max_fees = _calculate_max_fees(timekeeper_data, billing_start_date, billing_end_date, 16)
+        st.caption(f"Maximum fee lines allowed: {max_fees} (based on timekeepers and billing period)")
+        fees = st.slider(
+            "Number of Fee Line Items",
+            min_value=1,
+            max_value=max_fees,
+            value=min(20, max_fees),
+            format="%d"
+        )
+        st.caption("Number of expense line items to generate")
+        expenses = st.slider(
+            "Number of Expense Line Items",
+            min_value=0,
+            max_value=50,
+            value=5,
+            format="%d"
+        )
     max_daily_hours = st.number_input("Max Daily Timekeeper Hours:", min_value=1, max_value=24, value=16, step=1)
     
     st.subheader("Output Settings")
