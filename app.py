@@ -1,4 +1,4 @@
-```python
+python
 import streamlit as st
 import pandas as pd
 import random
@@ -911,4 +911,3 @@ if generate_button:
                         key=f"download_{filename}"
                     )
             status.update(label="Invoice generation complete!", state="complete")
-```
