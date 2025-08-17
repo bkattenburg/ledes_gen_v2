@@ -419,34 +419,54 @@ def _ensure_mandatory_lines(rows: List[Dict], timekeeper_data: List[Dict], invoi
             _force_timekeeper_on_row(r, "Ryan Kinsey", timekeeper_data or [])
     return rows
 
+def _validate_image_bytes(image_bytes: bytes) -> bool:
+    """Validate if bytes represent a valid image."""
+    try:
+        img = PILImage.open(io.BytesIO(image_bytes))
+        img.verify()  # Verify image integrity
+        img = PILImage.open(io.BytesIO(image_bytes))  # Re-open after verify
+        return img.format in ['JPEG', 'PNG']
+    except Exception as e:
+        logging.error(f"Image validation failed: {e}")
+        return False
+
 def _get_logo_bytes(uploaded_logo: Optional[Any], law_firm_id: str) -> bytes:
-    """Get logo bytes from uploaded file or default path."""
+    """Get logo bytes from uploaded file or default path, ensuring valid image format."""
     if uploaded_logo:
         try:
-            return uploaded_logo.read()
+            logo_bytes = uploaded_logo.read()
+            if _validate_image_bytes(logo_bytes):
+                return logo_bytes
+            st.warning("Uploaded logo is not a valid JPEG or PNG. Using default logo.")
         except Exception as e:
             logging.error(f"Error reading uploaded logo: {e}")
-            st.warning("Failed to read uploaded logo. Using default.")
+            st.warning("Failed to read uploaded logo. Using default logo.")
+
     logo_file_name = "nelsonmurdock2.jpg" if law_firm_id == CONFIG['DEFAULT_LAW_FIRM_ID'] else "icon.jpg"
     script_dir = os.path.dirname(__file__)
     logo_path = os.path.join(script_dir, "assets", logo_file_name)
     try:
         with open(logo_path, "rb") as f:
-            return f.read()
+            logo_bytes = f.read()
+            if _validate_image_bytes(logo_bytes):
+                return logo_bytes
+            st.warning(f"Default logo ({logo_file_name}) is not a valid JPEG or PNG. Using placeholder.")
     except Exception as e:
         logging.error(f"Logo load failed: {e}")
-        st.warning(f"Logo file ({logo_file_name}) not found. Using placeholder.")
-        img = PILImage.new("RGB", (128, 128), color="white")
-        draw = ImageDraw.Draw(img)
-        try:
-            font = ImageFont.load_default()
-        except Exception:
-            font = ImageFont.load_default()
-        draw.text((10, 20), "Logo", font=font, fill=(0, 0, 0))
-        buf = io.BytesIO()
-        img.save(buf, format="PNG")
-        buf.seek(0)
-        return buf.getvalue()
+        st.warning(f"Logo file ({logo_file_name}) not found or invalid. Using placeholder.")
+
+    # Fallback placeholder
+    img = PILImage.new("RGB", (128, 128), color="white")
+    draw = ImageDraw.Draw(img)
+    try:
+        font = ImageFont.load_default()
+    except Exception:
+        font = ImageFont.load_default()
+    draw.text((10, 20), "Logo", font=font, fill=(0, 0, 0))
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    buf.seek(0)
+    return buf.getvalue()
 
 def _create_pdf_invoice(df: pd.DataFrame, total_amount: float, invoice_number: str, invoice_date: datetime.date, billing_start_date: datetime.date, billing_end_date: datetime.date, client_id: str, law_firm_id: str, logo_bytes: bytes) -> io.BytesIO:
     """Create a PDF invoice with provided logo."""
@@ -478,6 +498,8 @@ def _create_pdf_invoice(df: pd.DataFrame, total_amount: float, invoice_number: s
         header_left_content = law_firm_para
 
         try:
+            if not _validate_image_bytes(logo_bytes):
+                raise ValueError("Invalid logo bytes")
             img = Image(io.BytesIO(logo_bytes), width=0.6 * inch, height=0.6 * inch, kind='direct', hAlign='LEFT')
             img._restrictSize(0.6 * inch, 0.6 * inch)
             img.alt = "Law Firm Logo"
@@ -653,7 +675,7 @@ with st.expander("Help & FAQs"):
       Columns: TASK_CODE, ACTIVITY_CODE, DESCRIPTION  
       Example: "L100,A101,Legal Research: Analyze legal precedents"
     - **How to use a custom logo?**  
-      Upload a JPG or PNG file in the Advanced Settings tab when PDF output is enabled.
+      Upload a valid JPG or PNG file in the Advanced Settings tab when PDF output is enabled.
     """)
 
 # Sidebar
