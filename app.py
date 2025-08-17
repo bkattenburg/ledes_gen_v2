@@ -430,7 +430,7 @@ def _validate_image_bytes(image_bytes: bytes) -> bool:
         logging.error(f"Image validation failed: {e}")
         return False
 
-def _get_logo_bytes(uploaded_logo: Optional[Any], law_firm_id: str, default_logo_path: str) -> bytes:
+def _get_logo_bytes(uploaded_logo: Optional[Any], law_firm_id: str) -> bytes:
     with st.status("Processing logo...") as status:
         if uploaded_logo:
             try:
@@ -445,14 +445,10 @@ def _get_logo_bytes(uploaded_logo: Optional[Any], law_firm_id: str, default_logo
                 st.warning("Failed to read uploaded logo. Using default logo.")
         
         logo_file_name = "nelsonmurdock2.jpg" if law_firm_id == CONFIG['DEFAULT_LAW_FIRM_ID'] else "icon.jpg"
-        if default_logo_path:
-            logo_path = default_logo_path
-        else:
-            script_dir = os.path.dirname(__file__)
-            logo_path = os.path.join(script_dir, "assets", logo_file_name)
-        
+        script_dir = os.path.dirname(__file__)
+        logo_path = os.path.join(script_dir, "assets", logo_file_name)
         try:
-            status.update(label=f"Loading default logo ({logo_path})...")
+            status.update(label=f"Loading default logo ({logo_file_name})...")
             with open(logo_path, "rb") as f:
                 logo_bytes = f.read()
             if _validate_image_bytes(logo_bytes):
@@ -477,7 +473,7 @@ def _get_logo_bytes(uploaded_logo: Optional[Any], law_firm_id: str, default_logo
         status.update(label="Placeholder logo generated", state="complete")
         return buf.getvalue()
         
-def _create_pdf_invoice(df: pd.DataFrame, total_amount: float, invoice_number: str, invoice_date: datetime.date, billing_start_date: datetime.date, billing_end_date: datetime.date, client_id: str, law_firm_id: str, logo_bytes: bytes, include_logo: bool, logo_width: float, logo_height: float) -> io.BytesIO:
+def _create_pdf_invoice(df: pd.DataFrame, total_amount: float, invoice_number: str, invoice_date: datetime.date, billing_start_date: datetime.date, billing_end_date: datetime.date, client_id: str, law_firm_id: str, logo_bytes: bytes, include_logo: bool = True) -> io.BytesIO:
     """Create a PDF invoice with provided logo."""
     buffer = io.BytesIO()
     try:
@@ -505,16 +501,15 @@ def _create_pdf_invoice(df: pd.DataFrame, total_amount: float, invoice_number: s
         left_style = ParagraphStyle(name="Left", parent=styles["Normal"], alignment=TA_LEFT, leading=12)
         law_firm_para = Paragraph(law_firm_info, left_style)
         header_left_content = law_firm_para
-        
         if include_logo:
             try:
                 if not _validate_image_bytes(logo_bytes):
                     raise ValueError("Invalid logo bytes")
-                img = Image(io.BytesIO(logo_bytes), width=logo_width * inch, height=logo_height * inch, kind='direct', hAlign='LEFT')
-                img._restrictSize(logo_width * inch, logo_height * inch)
+                img = Image(io.BytesIO(logo_bytes), width=0.6 * inch, height=0.6 * inch, kind='direct', hAlign='LEFT')
+                img._restrictSize(0.6 * inch, 0.6 * inch)
                 img.alt = "Law Firm Logo"
                 inner_table_data = [[img, law_firm_para]]
-                inner_table = Table(inner_table_data, colWidths=[(logo_width + 0.1) * inch, None])
+                inner_table = Table(inner_table_data, colWidths=[0.7 * inch, None])
                 inner_table.setStyle(TableStyle([
                     ('VALIGN', (0, 0), (-1, -1), 'TOP'),
                     ('LEFTPADDING', (1, 0), (1, 0), 6),
@@ -523,7 +518,23 @@ def _create_pdf_invoice(df: pd.DataFrame, total_amount: float, invoice_number: s
             except Exception as e:
                 logging.error(f"Error adding logo to PDF: {e}")
                 st.warning("Could not add logo to PDF. Using text instead.")
-                header_left_content = law_firm_para
+
+        try:
+            if not _validate_image_bytes(logo_bytes):
+                raise ValueError("Invalid logo bytes")
+            img = Image(io.BytesIO(logo_bytes), width=logo_width * inch, height=logo_height * inch, kind='direct', hAlign='LEFT')
+            img._restrictSize(logo_width * inch, logo_height * inch)
+            inner_table_data = [[img, law_firm_para]]
+            inner_table = Table(inner_table_data, colWidths=[(logo_width + 0.1) * inch, None])
+            inner_table.setStyle(TableStyle([
+                ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+                ('LEFTPADDING', (1, 0), (1, 0), 6),
+            ]))
+            header_left_content = inner_table
+        except Exception as e:
+            logging.error(f"Error adding logo to PDF: {e}")
+            st.warning("Could not add logo to PDF. Using text instead.")
+            header_left_content = law_firm_para
 
         if client_id == CONFIG['DEFAULT_CLIENT_ID']:
             client_info = (
@@ -542,6 +553,8 @@ def _create_pdf_invoice(df: pd.DataFrame, total_amount: float, invoice_number: s
         header_table = Table(header_data, colWidths=[available_width / 2, available_width / 2])
         header_table.setStyle(TableStyle([
             ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+            ('BOX', (0, 0), (0, 0), 1, colors.black),
+            ('BOX', (1, 0), (1, 0), 1, colors.black),
             ('LEFTPADDING', (0, 0), (0, 0), 6),
             ('RIGHTPADDING', (1, 0), (1, 0), 6),
             ('ALIGN', (0, 0), (0, 0), 'LEFT'),
@@ -632,11 +645,6 @@ def _customize_email_body(matter_number: str, invoice_number: str) -> Tuple[str,
     default_body = f"Please find the attached invoice files for matter {matter_number}.\n\nBest regards,\nYour Law Firm"
     subject = st.session_state.get('email_subject', default_subject)
     body = st.session_state.get('email_body', default_body)
-    
-    # Replace placeholders in case the user edited the template
-    subject = subject.replace('{matter_number}', matter_number).replace('{invoice_number}', invoice_number)
-    body = body.replace('{matter_number}', matter_number).replace('{invoice_number}', invoice_number)
-    
     return subject, body
 
 def _send_email_with_attachment(recipient_email: str, subject: str, body: str, attachments: List[Tuple[str, bytes]]) -> bool:
@@ -803,29 +811,20 @@ with tab_objects[1]:
     include_pdf = st.checkbox("Include PDF Invoice", value=False)
     
     uploaded_logo = None
-    logo_width = 0.6
-    logo_height = 0.6
+    logo_width = None
+    logo_height = None
+    
     if include_pdf:
         include_logo = st.checkbox("Include Logo in PDF", value=True, help="Uncheck to exclude logo from PDF header, using only law firm text.")
         default_logo_path = st.text_input("Custom Default Logo Path (Optional):", help="Enter the path to a custom default logo (JPEG/PNG). Leave blank to use assets/nelsonmurdock2.jpg or assets/icon.jpg.")
-        uploaded_logo = st.file_uploader(
-            "Upload Custom Logo (JPG/PNG)",
-            type=["jpg", "png", "jpeg"],
-            help="Upload a valid JPG or PNG image file (e.g., logo.jpg or logo.png). Only JPEG and PNG formats are supported."
-        )
-        if uploaded_logo:
-            try:
-                img = PILImage.open(uploaded_logo)
-                st.image(img, caption="Uploaded Logo Preview", width=150)
-            except Exception as e:
-                st.error(f"Cannot preview uploaded image: {e}. Please upload a valid JPEG or PNG.")
-            uploaded_logo.seek(0)  # Reset file pointer for later use
-        
-        logo_width = st.slider("Logo Width (inches):", 0.5, 2.0, 0.6, step=0.1)
-        logo_height = st.slider("Logo Height (inches):", 0.5, 2.0, 0.6, step=0.1) 
-    else:
-        include_logo = False
-        default_logo_path = ""
+        if include_logo:
+            uploaded_logo = st.file_uploader(
+                "Upload Custom Logo (JPG/PNG)",
+                type=["jpg", "png", "jpeg"],
+                help="Upload a valid JPG or PNG image file (e.g., logo.jpg or logo.png). Only JPEG and PNG formats are supported."
+            )
+            logo_width = st.slider("Logo Width (inches):", 0.5, 2.0, 0.6, step=0.1)
+            logo_height = st.slider("Logo Height (inches):", 0.5, 2.0, 0.6, step=0.1)
     
     generate_multiple = st.checkbox("Generate Multiple Invoices", help="Create more than one invoice.")
     num_invoices = 1
@@ -847,8 +846,8 @@ if send_email:
             st.caption(f"Sender Email: {sender_email}")
         except AttributeError:
             st.caption("Sender Email: Not configured (check secrets.toml)")
-        st.text_input("Email Subject Template:", value="LEDES Invoice for {matter_number} (Invoice #{invoice_number})", key="email_subject")
-        st.text_area("Email Body Template:", value="Please find the attached invoice files for matter {matter_number}.\n\nBest regards,\nYour Law Firm", height=150, key="email_body")
+        st.text_input("Email Subject Template:", value=f"LEDES Invoice for {matter_number_base} (Invoice #{{invoice_number}})", key="email_subject")
+        st.text_area("Email Body Template:", value=f"Please find the attached invoice files for matter {{matter_number}}.\n\nBest regards,\nYour Law Firm", height=150, key="email_body")
 
 # Validation Logic
 is_valid_input = True
@@ -916,8 +915,8 @@ if generate_button:
                 attachments_to_send.append((ledes_filename, ledes_content.encode('utf-8')))
                 
                 if include_pdf:
-                    logo_bytes = _get_logo_bytes(uploaded_logo, law_firm_id, default_logo_path)
-                    pdf_buffer = _create_pdf_invoice(df_invoice, total_amount, current_invoice_number, current_end_date, current_start_date, current_end_date, client_id, law_firm_id, logo_bytes, include_logo, logo_width, logo_height)
+                    logo_bytes = _get_logo_bytes(uploaded_logo, law_firm_id)
+                    pdf_buffer = _create_pdf_invoice(df_invoice, total_amount, current_invoice_number, current_end_date, current_start_date, current_end_date, client_id, law_firm_id, logo_bytes, include_logo)
                     pdf_filename = f"Invoice_{current_invoice_number}.pdf"
                     attachments_to_send.append((pdf_filename, pdf_buffer.getvalue()))
                 
