@@ -655,13 +655,15 @@ with tab2:
     
     # Calculate max fees dynamically
     max_fees = _calculate_max_fees(timekeeper_data, billing_start_date, billing_end_date, 16)
+    st.caption(f"Maximum fee lines allowed: {max_fees} (based on timekeepers and billing period)")
     fees = st.slider(
         "Number of Fee Line Items", 
         min_value=1, 
         max_value=max_fees, 
         value=min(20, max_fees), 
-        format="%d (Max: %d)" % max_fees
+        format="%d"
     )
+    st.caption("Number of expense line items to generate")
     expenses = st.slider(
         "Number of Expense Line Items", 
         min_value=0, 
