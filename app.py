@@ -675,7 +675,7 @@ with st.expander("Help & FAQs"):
       Columns: TASK_CODE, ACTIVITY_CODE, DESCRIPTION  
       Example: "L100,A101,Legal Research: Analyze legal precedents"
     - **How to use a custom logo?**  
-      Upload a valid JPG or PNG file in the Advanced Settings tab when PDF output is enabled.
+      Upload a valid JPG or PNG image file in the Advanced Settings tab when PDF output is enabled. Only JPEG and PNG formats are supported.
     """)
 
 # Sidebar
@@ -793,7 +793,11 @@ with tab_objects[1]:
     include_pdf = st.checkbox("Include PDF Invoice", value=False)
     uploaded_logo = None
     if include_pdf:
-        uploaded_logo = st.file_uploader("Upload Custom Logo (JPG/PNG)", type=["jpg", "png", "jpeg"], help="Optional: Upload a logo to include in PDF invoices.")
+        uploaded_logo = st.file_uploader(
+            "Upload Custom Logo (JPG/PNG)",
+            type=["jpg", "png", "jpeg"],
+            help="Upload a valid JPG or PNG image file (e.g., logo.jpg or logo.png). Only JPEG and PNG formats are supported."
+        )
     
     generate_multiple = st.checkbox("Generate Multiple Invoices", help="Create more than one invoice.")
     num_invoices = 1
