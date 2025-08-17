@@ -473,7 +473,7 @@ def _get_logo_bytes(uploaded_logo: Optional[Any], law_firm_id: str) -> bytes:
         status.update(label="Placeholder logo generated", state="complete")
         return buf.getvalue()
         
-def _create_pdf_invoice(df: pd.DataFrame, total_amount: float, invoice_number: str, invoice_date: datetime.date, billing_start_date: datetime.date, billing_end_date: datetime.date, client_id: str, law_firm_id: str, logo_bytes: bytes, include_logo: bool = True, logo_width: float = 0.6, logo_height: float = 0.6) -> io.BytesIO:
+def _create_pdf_invoice(df: pd.DataFrame, total_amount: float, invoice_number: str, invoice_date: datetime.date, billing_start_date: datetime.date, billing_end_date: datetime.date, client_id: str, law_firm_id: str, logo_bytes: bytes, include_logo: bool = True) -> io.BytesIO:
     """Create a PDF invoice with provided logo."""
     buffer = io.BytesIO()
     try:
@@ -505,11 +505,11 @@ def _create_pdf_invoice(df: pd.DataFrame, total_amount: float, invoice_number: s
             try:
                 if not _validate_image_bytes(logo_bytes):
                     raise ValueError("Invalid logo bytes")
-                img = Image(io.BytesIO(logo_bytes), width=logo_width * inch, height=logo_height * inch, kind='direct', hAlign='LEFT')
-                img._restrictSize(logo_width * inch, logo_height * inch)
+                img = Image(io.BytesIO(logo_bytes), width=0.6 * inch, height=0.6 * inch, kind='direct', hAlign='LEFT')
+                img._restrictSize(0.6 * inch, 0.6 * inch)
                 img.alt = "Law Firm Logo"
                 inner_table_data = [[img, law_firm_para]]
-                inner_table = Table(inner_table_data, colWidths=[(logo_width + 0.1) * inch, None])
+                inner_table = Table(inner_table_data, colWidths=[0.7 * inch, None])
                 inner_table.setStyle(TableStyle([
                     ('VALIGN', (0, 0), (-1, -1), 'TOP'),
                     ('LEFTPADDING', (1, 0), (1, 0), 6),
@@ -518,7 +518,23 @@ def _create_pdf_invoice(df: pd.DataFrame, total_amount: float, invoice_number: s
             except Exception as e:
                 logging.error(f"Error adding logo to PDF: {e}")
                 st.warning("Could not add logo to PDF. Using text instead.")
-                header_left_content = law_firm_para
+
+        try:
+            if not _validate_image_bytes(logo_bytes):
+                raise ValueError("Invalid logo bytes")
+            img = Image(io.BytesIO(logo_bytes), width=logo_width * inch, height=logo_height * inch, kind='direct', hAlign='LEFT')
+            img._restrictSize(logo_width * inch, logo_height * inch)
+            inner_table_data = [[img, law_firm_para]]
+            inner_table = Table(inner_table_data, colWidths=[(logo_width + 0.1) * inch, None])
+            inner_table.setStyle(TableStyle([
+                ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+                ('LEFTPADDING', (1, 0), (1, 0), 6),
+            ]))
+            header_left_content = inner_table
+        except Exception as e:
+            logging.error(f"Error adding logo to PDF: {e}")
+            st.warning("Could not add logo to PDF. Using text instead.")
+            header_left_content = law_firm_para
 
         if client_id == CONFIG['DEFAULT_CLIENT_ID']:
             client_info = (
@@ -699,17 +715,25 @@ sample_custom = pd.DataFrame({
 csv_custom = sample_custom.to_csv(index=False).encode('utf-8')
 st.sidebar.download_button("Download Sample Custom Tasks CSV", csv_custom, "sample_custom_tasks.csv", "text/csv")
 
-# Initialize state variables
-uploaded_timekeepers = st.sidebar.file_uploader("Upload Timekeeper CSV", type="csv")
-timekeeper_data = _load_timekeepers(uploaded_timekeepers)
-uploaded_custom_tasks = st.sidebar.file_uploader("Upload Custom Tasks CSV", type="csv")
-custom_task_activity_desc = _load_custom_task_activity_data(uploaded_custom_tasks)
-if custom_task_activity_desc:
-    task_activity_desc = custom_task_activity_desc
-else:
-    task_activity_desc = CONFIG['DEFAULT_TASK_ACTIVITY_DESC']
+# File Upload and Output Options
+with st.expander("File Upload & Output Options"):
+    st.markdown("<h3 style='color: #1E1E1E;'>File Upload</h3>", unsafe_allow_html=True)
+    uploaded_timekeeper_file = st.file_uploader("Upload Timekeeper CSV (tk_info.csv)", type="csv")
+    timekeeper_data = _load_timekeepers(uploaded_timekeeper_file)
+
+    use_custom_tasks = st.checkbox("Use Custom Line Item Details?", value=True)
+    uploaded_custom_tasks_file = None
+    if use_custom_tasks:
+        uploaded_custom_tasks_file = st.file_uploader("Upload Custom Line Items CSV (custom_details.csv)", type="csv")
     
-send_email = st.checkbox("Send Email", value=False, help="Enable this to send invoices as an email attachment.")
+    task_activity_desc = CONFIG['DEFAULT_TASK_ACTIVITY_DESC']
+    if use_custom_tasks and uploaded_custom_tasks_file:
+        custom_tasks_data = _load_custom_task_activity_data(uploaded_custom_tasks_file)
+        if custom_tasks_data:
+            task_activity_desc = custom_tasks_data
+    
+    st.markdown("<h3 style='color: #1E1E1E;'>Output & Delivery Options</h3>", unsafe_allow_html=True)
+    send_email = st.checkbox("Send Invoices via Email", value=True)
 
 # Dynamic Tabs
 tabs = ["Invoice Inputs", "Advanced Settings"]
@@ -792,8 +816,8 @@ with tab_objects[1]:
     
     if include_pdf:
         include_logo = st.checkbox("Include Logo in PDF", value=True, help="Uncheck to exclude logo from PDF header, using only law firm text.")
+        default_logo_path = st.text_input("Custom Default Logo Path (Optional):", help="Enter the path to a custom default logo (JPEG/PNG). Leave blank to use assets/nelsonmurdock2.jpg or assets/icon.jpg.")
         if include_logo:
-            default_logo_path = st.text_input("Custom Default Logo Path (Optional):", help="Enter the path to a custom default logo (JPEG/PNG). Leave blank to use assets/nelsonmurdock2.jpg or assets/icon.jpg.")
             uploaded_logo = st.file_uploader(
                 "Upload Custom Logo (JPG/PNG)",
                 type=["jpg", "png", "jpeg"],
@@ -892,7 +916,7 @@ if generate_button:
                 
                 if include_pdf:
                     logo_bytes = _get_logo_bytes(uploaded_logo, law_firm_id)
-                    pdf_buffer = _create_pdf_invoice(df_invoice, total_amount, current_invoice_number, current_end_date, current_start_date, current_end_date, client_id, law_firm_id, logo_bytes, include_logo, logo_width, logo_height)
+                    pdf_buffer = _create_pdf_invoice(df_invoice, total_amount, current_invoice_number, current_end_date, current_start_date, current_end_date, client_id, law_firm_id, logo_bytes, include_logo)
                     pdf_filename = f"Invoice_{current_invoice_number}.pdf"
                     attachments_to_send.append((pdf_filename, pdf_buffer.getvalue()))
                 
