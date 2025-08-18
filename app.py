@@ -18,7 +18,7 @@ from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, 
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib import colors
 from reportlab.lib.units import inch
-from reportlab.lib.enums import TA_LEFT, TA_RIGHT
+from reportlab.lib.enums import TA_LEFT, TA_RIGHT, TA_CENTER
 from PIL import Image as PILImage, ImageDraw, ImageFont
 import zipfile
 
@@ -494,21 +494,28 @@ def _create_pdf_invoice(df: pd.DataFrame, total_amount: float, invoice_number: s
     header_table.setStyle(TableStyle([
         ('VALIGN', (0, 0), (-1, -1), 'TOP'),
         ('LEFTPADDING', (0, 0), (0, 0), 0),
+        ('TOPPADDING', (0, 0), (-1, -1), 0),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 0),
     ]))
     elements.append(header_table)
-    elements.append(Spacer(1, 0.25 * inch))
+    elements.append(Spacer(1, 0.1 * inch))
 
-    # Invoice details below the header
+    # Invoice details aligned with the right side of client details
     invoice_info = f"Invoice #: {invoice_number}<br/>Invoice Date: {invoice_date.strftime('%Y-%m-%d')}<br/>Billing Period: {billing_start_date.strftime('%Y-%m-%d')} to {billing_end_date.strftime('%Y-%m-%d')}"
     invoice_para = Paragraph(invoice_info, right_align_style)
-    elements.append(invoice_para)
+    invoice_table = Table([[invoice_para]], colWidths=[3.5 * inch])
+    invoice_table.setStyle(TableStyle([
+        ('ALIGN', (0, 0), (-1, -1), 'RIGHT'),
+        ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+    ]))
+    elements.append(invoice_table)
     elements.append(Spacer(1, 0.1 * inch))
 
     # Table with updated columns and wrapped text
     data = [["Date", "Timekeeper", "Task Code", "Activity Code", "Description", "Hours", "Rate", "Total"]]
     for _, row in df.iterrows():
         date = row["LINE_ITEM_DATE"]
-        timekeeper = row["TIMEKEEPER_NAME"] if row["TIMEKEEPER_NAME"] else "N/A"
+        timekeeper = Paragraph(row["TIMEKEEPER_NAME"] if row["TIMEKEEPER_NAME"] else "N/A", wrap_style)
         task_code = row.get("TASK_CODE", "") if not row["EXPENSE_CODE"] else ""
         activity_code = row.get("ACTIVITY_CODE", "") if not row["EXPENSE_CODE"] else ""
         description = Paragraph(row["DESCRIPTION"], wrap_style)
@@ -528,6 +535,14 @@ def _create_pdf_invoice(df: pd.DataFrame, total_amount: float, invoice_number: s
         ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
         ('GRID', (0, 0), (-1, -1), 1, colors.black),
         ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+        ('ALIGN', (0, 0), (0, -1), 'CENTER'),  # Center Date column
+        ('ALIGN', (5, 0), (5, -1), 'CENTER'),  # Center Hours column if needed
+        ('ALIGN', (6, 0), (6, -1), 'RIGHT'),  # Right-align Rate
+        ('ALIGN', (7, 0), (7, -1), 'RIGHT'),  # Right-align Total
+        ('LEFTPADDING', (0, 0), (-1, -1), 2),  # Reduce padding for better spacing
+        ('RIGHTPADDING', (0, 0), (-1, -1), 2),
+        ('TOPPADDING', (0, 0), (-1, -1), 2),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 2),
     ]))
     elements.append(table)
 
