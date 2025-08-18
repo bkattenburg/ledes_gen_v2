@@ -454,7 +454,7 @@ def _get_logo_bytes(uploaded_logo: Optional[Any], law_firm_id: str) -> bytes:
     return buf.getvalue()
 
 def _create_pdf_invoice(df: pd.DataFrame, total_amount: float, invoice_number: str, invoice_date: datetime.date, billing_start_date: datetime.date, billing_end_date: datetime.date, client_id: str, law_firm_id: str, logo_bytes: bytes, include_logo: bool = True) -> io.BytesIO:
-    """Generate a PDF invoice."""
+    """Generate a PDF invoice matching the provided format."""
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(buffer, pagesize=letter)
     elements = []
@@ -462,10 +462,14 @@ def _create_pdf_invoice(df: pd.DataFrame, total_amount: float, invoice_number: s
     normal_style = styles['Normal']
     heading_style = ParagraphStyle(name='Heading', fontSize=12, leading=14, alignment=TA_LEFT)
     right_align_style = ParagraphStyle(name='RightAlign', fontSize=10, leading=12, alignment=TA_RIGHT)
-    
-    law_firm_info = "Nelson & Murdock, Attorneys at Law<br/>315 W 45th St, New York, NY 10036" if law_firm_id == CONFIG['DEFAULT_LAW_FIRM_ID'] else "Generic Law Firm<br/>123 Main St, Anytown, USA"
+    wrap_style = ParagraphStyle(name='Wrap', fontSize=10, leading=12, wordWrap='CJK', alignment=TA_LEFT)
+
+    # Header with Law Firm and Client Information
+    law_firm_info = f"{law_firm_id}<br/>{'Nelson & Murdock, Attorneys at Law' if law_firm_id == CONFIG['DEFAULT_LAW_FIRM_ID'] else 'Generic Law Firm'}<br/>One Park Avenue<br/>Manhattan, NY 10003"
     law_firm_para = Paragraph(law_firm_info, normal_style)
-    header_left_content = law_firm_para
+    client_info = f"{client_id}<br/>A Onit Inc.<br/>1360 Post Oak Blvd<br/>Houston, TX 77056"
+    client_para = Paragraph(client_info, normal_style)
+    header_left_content = law_firm_para if not include_logo else None
     if include_logo:
         try:
             if not _validate_image_bytes(logo_bytes):
@@ -483,33 +487,36 @@ def _create_pdf_invoice(df: pd.DataFrame, total_amount: float, invoice_number: s
         except Exception as e:
             logging.error(f"Error adding logo to PDF: {e}")
             st.warning("Could not add logo to PDF. Using text instead.")
-    
-    client_info = f"Client ID: {client_id}<br/>Attn: Billing Department"
-    client_para = Paragraph(client_info, normal_style)
+            header_left_content = law_firm_para
+
     invoice_info = f"Invoice #: {invoice_number}<br/>Invoice Date: {invoice_date.strftime('%Y-%m-%d')}<br/>Billing Period: {billing_start_date.strftime('%Y-%m-%d')} to {billing_end_date.strftime('%Y-%m-%d')}"
     invoice_para = Paragraph(invoice_info, right_align_style)
-    header_data = [[header_left_content, invoice_para]]
+    header_data = [[header_left_content, ""], [client_para, invoice_para]]
     header_table = Table(header_data, colWidths=[4.5 * inch, 3.5 * inch])
     header_table.setStyle(TableStyle([
         ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+        ('LEFTPADDING', (0, 0), (0, 0), 0),
     ]))
     elements.append(header_table)
     elements.append(Spacer(1, 0.25 * inch))
-    
+
     elements.append(Paragraph("Invoice", heading_style))
     elements.append(Spacer(1, 0.1 * inch))
-    
-    data = [["Date", "Description", "Timekeeper", "Hours/Units", "Rate", "Total"]]
+
+    # Table with updated columns and wrapped text
+    data = [["Date", "Timekeeper", "Task Code", "Activity Code", "Description", "Hours/Units", "Rate", "Total"]]
     for _, row in df.iterrows():
         date = row["LINE_ITEM_DATE"]
-        description = row["DESCRIPTION"]
         timekeeper = row["TIMEKEEPER_NAME"] if row["TIMEKEEPER_NAME"] else "N/A"
+        task_code = row.get("TASK_CODE", "") if not row["EXPENSE_CODE"] else ""
+        activity_code = row.get("ACTIVITY_CODE", "") if not row["EXPENSE_CODE"] else ""
+        description = Paragraph(row["DESCRIPTION"], wrap_style)
         hours = f"{row['HOURS']:.1f}" if not row["EXPENSE_CODE"] else f"{int(row['HOURS'])}"
         rate = f"${row['RATE']:.2f}" if row["RATE"] else "N/A"
         total = f"${row['LINE_ITEM_TOTAL']:.2f}"
-        data.append([date, description, timekeeper, hours, rate, total])
-    
-    table = Table(data, colWidths=[1 * inch, 2.5 * inch, 1.5 * inch, 1 * inch, 1 * inch, 1 * inch])
+        data.append([date, timekeeper, task_code, activity_code, description, hours, rate, total])
+
+    table = Table(data, colWidths=[0.8 * inch, 1.2 * inch, 0.7 * inch, 0.7 * inch, 1.8 * inch, 0.8 * inch, 0.8 * inch, 0.8 * inch])
     table.setStyle(TableStyle([
         ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
         ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
@@ -519,13 +526,14 @@ def _create_pdf_invoice(df: pd.DataFrame, total_amount: float, invoice_number: s
         ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
         ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
         ('GRID', (0, 0), (-1, -1), 1, colors.black),
+        ('VALIGN', (0, 0), (-1, -1), 'TOP'),
     ]))
     elements.append(table)
-    
+
     elements.append(Spacer(1, 0.25 * inch))
     total_para = Paragraph(f"Total: ${total_amount:.2f}", right_align_style)
     elements.append(total_para)
-    
+
     doc.build(elements)
     buffer.seek(0)
     return buffer
@@ -808,9 +816,15 @@ if generate_button:
                     current_invoice_desc, current_start_date, current_end_date,
                     task_activity_desc, CONFIG['MAJOR_TASK_CODES'], max_daily_hours, include_block_billed, faker
                 )
+                actual_fee_count = sum(1 for row in rows if not row.get("EXPENSE_CODE"))
+                actual_expense_count = sum(1 for row in rows if row.get("EXPENSE_CODE"))
                 if spend_agent:
                     rows = _ensure_mandatory_lines(rows, timekeeper_data, current_invoice_desc, client_id, law_firm_id, current_start_date, current_end_date, selected_items)
                 
+                if actual_fee_count < fees_used or actual_expense_count < expenses_used:
+                    shortfall_msg = "The number of generated line items is less than requested. This may be due to daily hour limits per timekeeper or random generation constraints. Please adjust the 'Max Daily Timekeeper Hours' or reduce the requested number of line items."
+                    st.warning(shortfall_msg)
+
                 df_invoice = pd.DataFrame(rows)
                 current_invoice_number = f"{invoice_number_base}-{i+1}"
                 current_matter_number = matter_number_base
