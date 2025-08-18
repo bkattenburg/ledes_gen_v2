@@ -582,7 +582,6 @@ def update_send_email():
     st.session_state.send_email = st.session_state.send_email_checkbox
     logging.debug(f"Updated st.session_state.send_email to {st.session_state.send_email}")
 
-# Help & FAQs Expander
 with st.expander("Help & FAQs"):
     st.markdown("""
     ### FAQs
@@ -595,7 +594,6 @@ with st.expander("Help & FAQs"):
     - **What if my logo doesn’t appear in the PDF?** Check that the file is a valid JPEG or PNG, not corrupted, and under 5MB. Try re-saving the image using an image editor. If issues persist, enable logging to debug (see Advanced Settings for custom default logo path).
     """)
 
-# Output & Delivery Options
 st.markdown("<h3 style='color: #1E1E1E;'>Output & Delivery Options</h3>", unsafe_allow_html=True)
 st.checkbox(
     "Send Invoices via Email",
@@ -702,17 +700,7 @@ with tab_objects[2]:
             value=5,
             format="%d"
         )
-   # In the "Advanced Settings" tab (replace lines ~697–699)
-    max_daily_hours = st.number_input(
-        "Max Daily Timekeeper Hours:",
-        min_value=1,
-        max_value=24,
-        value=10,
-        step=1,
-        help="Maximum billable hours per timekeeper per day. Typical range is 6–12 hours for realistic invoices; use higher values (e.g., 16) for stress-testing."
-    )
-    if max_daily_hours > 12:
-        st.warning("Maximum daily hours above 12 may produce unrealistic invoices. Consider 6–12 hours for typical legal workloads.")
+    max_daily_hours = st.number_input("Max Daily Timekeeper Hours:", min_value=1, max_value=24, value=16, step=1)
     
     if spend_agent:
         st.markdown("<h3 style='color: #1E1E1E;'>Mandatory Items</h3>", unsafe_allow_html=True)
@@ -759,7 +747,7 @@ if st.session_state.send_email:
         recipient_email = st.text_input("Recipient Email Address:")
         try:
             sender_email = st.secrets.email.email_from
-            st.caption(f"Sender Email will be from: {st.secrets.get('email', {}).get('username', 'N/A')}")
+            st.caption(f"Sender Email will be from: {sender_email}")
         except AttributeError:
             st.caption("Sender Email: Not configured (check secrets.toml)")
         st.text_input("Email Subject Template:", value=f"LEDES Invoice for {matter_number_base} (Invoice #{{invoice_number}})", key="email_subject")
