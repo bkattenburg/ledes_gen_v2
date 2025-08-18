@@ -458,17 +458,53 @@ def _create_pdf_invoice(df: pd.DataFrame, total_amount: float, invoice_number: s
     doc = SimpleDocTemplate(buffer, pagesize=letter)
     elements = []
     styles = getSampleStyleSheet()
-    normal_style = styles['Normal']
-    heading_style = ParagraphStyle(name='Heading', fontSize=12, leading=14, alignment=TA_LEFT)
-    right_align_style = styles['Heading4']
-    wrap_style = ParagraphStyle(name='Wrap', fontSize=10, leading=12, wordWrap='CJK', alignment=TA_LEFT)
 
-    # Header with Law Firm on left and Client on right, aligned symmetrically
+    # Define new styles
+    header_info_style = ParagraphStyle(
+        'HeaderInfo',
+        parent=styles['Normal'],
+        fontName='Helvetica-Bold',
+        fontSize=12,
+        leading=14,
+        alignment=TA_LEFT
+    )
+    
+    client_info_style = ParagraphStyle(
+        'ClientInfo',
+        parent=header_info_style,
+        alignment=TA_RIGHT
+    )
+
+    table_header_style = ParagraphStyle(
+        'TableHeader',
+        parent=styles['Normal'],
+        fontName='Helvetica-Bold',
+        fontSize=10,
+        leading=12,
+        alignment=TA_CENTER,
+        wordWrap='CJK'
+    )
+
+    table_data_style = ParagraphStyle(
+        'TableData',
+        parent=styles['Normal'],
+        fontName='Helvetica',
+        fontSize=10,
+        leading=12,
+        alignment=TA_LEFT,
+        wordWrap='CJK'
+    )
+    
+    right_align_style = styles['Heading4']
+
+    # Header with Law Firm on left and Client on right
     law_firm_info = f"Nelson and Murdock<br/>{law_firm_id}<br/>One Park Avenue<br/>Manhattan, NY 10003"
-    law_firm_para = Paragraph(law_firm_info, normal_style)
     client_info = f"A Onit Inc.<br/>{client_id}<br/>1360 Post Oak Blvd<br/>Houston, TX 77056"
-    client_para = Paragraph(client_info, right_align_style)
-    header_left_content = law_firm_para if not include_logo else None
+    
+    law_firm_para = Paragraph(law_firm_info, header_info_style)
+    client_para = Paragraph(client_info, client_info_style)
+
+    header_left_content = law_firm_para
     if include_logo:
         try:
             if not _validate_image_bytes(logo_bytes):
@@ -476,7 +512,7 @@ def _create_pdf_invoice(df: pd.DataFrame, total_amount: float, invoice_number: s
             img = Image(io.BytesIO(logo_bytes), width=0.6 * inch, height=0.6 * inch, kind='direct', hAlign='LEFT')
             img._restrictSize(0.6 * inch, 0.6 * inch)
             img.alt = "Law Firm Logo"
-            inner_table_data = [[img, law_firm_para]]
+            inner_table_data = [[img, Paragraph(law_firm_info, header_info_style)]]
             inner_table = Table(inner_table_data, colWidths=[0.7 * inch, None])
             inner_table.setStyle(TableStyle([
                 ('VALIGN', (0, 0), (-1, -1), 'TOP'),
@@ -489,20 +525,21 @@ def _create_pdf_invoice(df: pd.DataFrame, total_amount: float, invoice_number: s
             header_left_content = law_firm_para
 
     header_data = [[header_left_content, client_para]]
-    header_table = Table(header_data, colWidths=[3.5 * inch, 4.5 * inch])  # Adjusted to mirror alignment
+    header_table = Table(header_data, colWidths=[4 * inch, 4 * inch])
     header_table.setStyle(TableStyle([
         ('VALIGN', (0, 0), (-1, -1), 'TOP'),
         ('LEFTPADDING', (0, 0), (0, 0), 0),
+        ('RIGHTPADDING', (0, 0), (0, 0), 0),
         ('TOPPADDING', (0, 0), (-1, -1), 0),
         ('BOTTOMPADDING', (0, 0), (-1, -1), 0),
     ]))
     elements.append(header_table)
     elements.append(Spacer(1, 0.1 * inch))
 
-    # Invoice details restored to original position
+    # Invoice details
     invoice_info = f"Invoice #: {invoice_number}<br/>Invoice Date: {invoice_date.strftime('%Y-%m-%d')}<br/>Billing Period: {billing_start_date.strftime('%Y-%m-%d')} to {billing_end_date.strftime('%Y-%m-%d')}"
     invoice_para = Paragraph(invoice_info, right_align_style)
-    invoice_table = Table([[invoice_para]], colWidths=[4.5 * inch])
+    invoice_table = Table([[invoice_para]], colWidths=[7.5 * inch])
     invoice_table.setStyle(TableStyle([
         ('ALIGN', (0, 0), (-1, -1), 'RIGHT'),
         ('VALIGN', (0, 0), (-1, -1), 'TOP'),
@@ -510,14 +547,25 @@ def _create_pdf_invoice(df: pd.DataFrame, total_amount: float, invoice_number: s
     elements.append(invoice_table)
     elements.append(Spacer(1, 0.1 * inch))
 
-    # Table with updated columns and wrapped text, including Task Code and Activity Code headers
-    data = [["Date", Paragraph("Task Code", wrap_style), Paragraph("Activity Code", wrap_style), "Timekeeper", "Description", "Hours", "Rate", "Total"]]
+    # Table with updated columns and wrapped text
+    data = [
+        [
+            Paragraph("Date", table_header_style), 
+            Paragraph("Task Code", table_header_style), 
+            Paragraph("Activity Code", table_header_style), 
+            Paragraph("Timekeeper", table_header_style), 
+            Paragraph("Description", table_header_style), 
+            Paragraph("Hours", table_header_style), 
+            Paragraph("Rate", table_header_style), 
+            Paragraph("Total", table_header_style)
+        ]
+    ]
     for _, row in df.iterrows():
         date = row["LINE_ITEM_DATE"]
-        timekeeper = Paragraph(row["TIMEKEEPER_NAME"] if row["TIMEKEEPER_NAME"] else "N/A", wrap_style)
+        timekeeper = Paragraph(row["TIMEKEEPER_NAME"] if row["TIMEKEEPER_NAME"] else "N/A", table_data_style)
         task_code = row.get("TASK_CODE", "") if not row["EXPENSE_CODE"] else ""
         activity_code = row.get("ACTIVITY_CODE", "") if not row["EXPENSE_CODE"] else ""
-        description = Paragraph(row["DESCRIPTION"], wrap_style)
+        description = Paragraph(row["DESCRIPTION"], table_data_style)
         hours = f"{row['HOURS']:.1f}" if not row["EXPENSE_CODE"] else f"{int(row['HOURS'])}"
         rate = f"${row['RATE']:.2f}" if row["RATE"] else "N/A"
         total = f"${row['LINE_ITEM_TOTAL']:.2f}"
@@ -527,18 +575,18 @@ def _create_pdf_invoice(df: pd.DataFrame, total_amount: float, invoice_number: s
     table.setStyle(TableStyle([
         ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
         ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
-        ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
         ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
         ('FONTSIZE', (0, 0), (-1, 0), 10),
         ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
         ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
         ('GRID', (0, 0), (-1, -1), 1, colors.black),
         ('VALIGN', (0, 0), (-1, -1), 'TOP'),
-        ('ALIGN', (0, 0), (0, -1), 'CENTER'),  # Center Date column
-        ('ALIGN', (5, 0), (5, -1), 'CENTER'),  # Center Hours column if needed
-        ('ALIGN', (6, 0), (6, -1), 'RIGHT'),  # Right-align Rate
-        ('ALIGN', (7, 0), (7, -1), 'RIGHT'),  # Right-align Total
-        ('LEFTPADDING', (0, 0), (-1, -1), 2),  # Reduce padding for better spacing
+        ('ALIGN', (0, 0), (0, -1), 'CENTER'),
+        ('ALIGN', (1, 1), (2, -1), 'CENTER'), # Center Task Code and Activity Code data
+        ('ALIGN', (5, 0), (5, -1), 'CENTER'),
+        ('ALIGN', (6, 0), (6, -1), 'RIGHT'),
+        ('ALIGN', (7, 0), (7, -1), 'RIGHT'),
+        ('LEFTPADDING', (0, 0), (-1, -1), 2),
         ('RIGHTPADDING', (0, 0), (-1, -1), 2),
         ('TOPPADDING', (0, 0), (-1, -1), 2),
         ('BOTTOMPADDING', (0, 0), (-1, -1), 2),
@@ -546,31 +594,8 @@ def _create_pdf_invoice(df: pd.DataFrame, total_amount: float, invoice_number: s
     elements.append(table)
 
     elements.append(Spacer(1, 0.25 * inch))
-    
-    # Calculate fees and expenses totals
-    total_fees = df[df['EXPENSE_CODE'] == '']['LINE_ITEM_TOTAL'].sum()
-    total_expenses = df[df['EXPENSE_CODE'] != '']['LINE_ITEM_TOTAL'].sum()
-    
-    # Create paragraphs for the totals, right-aligned
-    total_fees_para = Paragraph(f"Total Fees: ${total_fees:.2f}", right_align_style)
-    total_expenses_para = Paragraph(f"Total Expenses: ${total_expenses:.2f}", right_align_style)
-    invoice_total_para = Paragraph(f"Invoice Total: ${total_amount:.2f}", right_align_style)
-
-    # Use a table to align totals to the right
-    total_data = [
-        [total_fees_para],
-        [total_expenses_para],
-        [invoice_total_para]
-    ]
-    total_table = Table(total_data, colWidths=[8.0 * inch])
-    total_table.setStyle(TableStyle([
-        ('ALIGN', (0, 0), (-1, -1), 'RIGHT'),
-        ('VALIGN', (0, 0), (-1, -1), 'TOP'),
-        ('LEFTPADDING', (0, 0), (-1, -1), 0),
-        ('RIGHTPADDING', (0, 0), (-1, -1), 0),
-    ]))
-    
-    elements.append(total_table)
+    total_para = Paragraph(f"Total: ${total_amount:.2f}", right_align_style)
+    elements.append(total_para)
 
     doc.build(elements)
     buffer.seek(0)
