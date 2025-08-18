@@ -719,8 +719,8 @@ with tab_objects[2]:
     
     if include_pdf:
         include_logo = st.checkbox("Include Logo in PDF", value=True, help="Uncheck to exclude logo from PDF header, using only law firm text.")
-        default_logo_path = st.text_input("Custom Default Logo Path (Optional):", help="Enter the path to a custom default logo (JPEG/PNG). Leave blank to use assets/nelsonmurdock2.jpg or assets/icon.jpg.")
         if include_logo:
+            default_logo_path = st.text_input("Custom Default Logo Path (Optional):", help="Enter the path to a custom default logo (JPEG/PNG). Leave blank to use assets/nelsonmurdock2.jpg or assets/icon.jpg.")
             uploaded_logo = st.file_uploader(
                 "Upload Custom Logo (JPG/PNG)",
                 type=["jpg", "png", "jpeg"],
