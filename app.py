@@ -593,9 +593,28 @@ def _create_pdf_invoice(df: pd.DataFrame, total_amount: float, invoice_number: s
     ]))
     elements.append(table)
 
-    elements.append(Spacer(1, 0.25 * inch))
-    total_para = Paragraph(f"Total: ${total_amount:.2f}", right_align_style)
-    elements.append(total_para)
+        elements.append(Spacer(1, 0.25 * inch))
+
+    # --- Calculate Fees and Expenses separately ---
+    total_fees = df.loc[df["EXPENSE_CODE"] == "", "LINE_ITEM_TOTAL"].sum()
+    total_expenses = df.loc[df["EXPENSE_CODE"] != "", "LINE_ITEM_TOTAL"].sum()
+
+    # Build totals table aligned under "Total" column
+    totals_data = [
+        ["", f"Total Fees: ${total_fees:.2f}"],
+        ["", f"Total Expenses: ${total_expenses:.2f}"],
+        ["", f"Invoice Total: ${total_amount:.2f}"]
+    ]
+    totals_table = Table(totals_data, colWidths=[6.7 * inch, 0.8 * inch])  # adjust first width to push right
+    totals_table.setStyle(TableStyle([
+        ('ALIGN', (1, 0), (1, -1), 'RIGHT'),
+        ('FONTNAME', (1, 0), (1, -1), 'Helvetica-Bold'),
+        ('FONTSIZE', (1, 0), (1, -1), 11),
+        ('TOPPADDING', (0, 0), (-1, -1), 2),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 2),
+    ]))
+    elements.append(totals_table)
+
 
     doc.build(elements)
     buffer.seek(0)
