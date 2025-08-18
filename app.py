@@ -712,7 +712,7 @@ with tab_objects[2]:
         help="Maximum billable hours per timekeeper per day. Typical range is 6–12 hours for realistic invoices; use higher values (e.g., 16) for stress-testing."
     )
     if max_daily_hours > 12:
-        st.warning("Maximum daily hours above 12 may produce unrealistic invoices. Consider 6–12 hours for typical legal workloads.") max_daily_hours = st.number_input("Max Daily Timekeeper Hours:", min_value=1, max_value=24, value=16, step=1)
+        st.warning("Maximum daily hours above 12 may produce unrealistic invoices. Consider 6–12 hours for typical legal workloads.")
     
     if spend_agent:
         st.markdown("<h3 style='color: #1E1E1E;'>Mandatory Items</h3>", unsafe_allow_html=True)
