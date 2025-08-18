@@ -604,13 +604,12 @@ sample_custom = pd.DataFrame({
 csv_custom = sample_custom.to_csv(index=False).encode('utf-8')
 st.sidebar.download_button("Download Sample Custom Tasks CSV", csv_custom, "sample_custom_tasks.csv", "text/csv")
 
-# Initialize send_email before tabs
-send_email = False  # Default value
+# Initialize send_email in session state
+if "send_email" not in st.session_state:
+    st.session_state.send_email = False
 
 # Dynamic Tabs
-tabs = ["File Upload & Output Options", "Invoice Inputs", "Advanced Settings"]
-if send_email:
-    tabs.append("Email Configuration")
+tabs = ["File Upload & Output Options", "Invoice Inputs", "Advanced Settings", "Email Configuration"]
 tab_objects = st.tabs(tabs)
 
 with tab_objects[0]:
@@ -630,7 +629,7 @@ with tab_objects[0]:
             task_activity_desc = custom_tasks_data
     
     st.markdown("<h3 style='color: #1E1E1E;'>Output & Delivery Options</h3>", unsafe_allow_html=True)
-    send_email = st.checkbox("Send Invoices via Email", value=True)
+    st.session_state.send_email = st.checkbox("Send Invoices via Email", value=st.session_state.send_email)
 
 with tab_objects[1]:
     st.markdown("<h2 style='color: #1E1E1E;'>Invoice Details</h2>", unsafe_allow_html=True)
@@ -728,8 +727,8 @@ with tab_objects[2]:
         else:
             num_invoices = st.number_input("Number of Invoices to Create:", min_value=1, value=1, step=1, help="Creates N invoices. When 'Multiple Billing Periods' is enabled, one invoice per period.")
 
-if send_email:
-    with tab_objects[3]:
+with tab_objects[3]:
+    if st.session_state.send_email:
         st.markdown("<h2 style='color: #1E1E1E;'>Email Configuration</h2>", unsafe_allow_html=True)
         recipient_email = st.text_input("Recipient Email Address:")
         try:
@@ -739,6 +738,8 @@ if send_email:
             st.caption("Sender Email: Not configured (check secrets.toml)")
         st.text_input("Email Subject Template:", value=f"LEDES Invoice for {matter_number_base} (Invoice #{{invoice_number}})", key="email_subject")
         st.text_area("Email Body Template:", value=f"Please find the attached invoice files for matter {{matter_number}}.\n\nBest regards,\nYour Law Firm", height=150, key="email_body")
+    else:
+        st.info("Email configuration is disabled. Enable 'Send Invoices via Email' in the File Upload & Output Options tab to configure email settings.")
 
 # Validation Logic
 is_valid_input = True
@@ -754,7 +755,7 @@ if not _is_valid_client_id(client_id):
 if not _is_valid_law_firm_id(law_firm_id):
     st.error("Law Firm ID must be in format XX-XXXXXXX (e.g., 02-1234567).")
     is_valid_input = False
-if send_email and not recipient_email:
+if st.session_state.send_email and not recipient_email:
     st.error("Please provide a recipient email address.")
     is_valid_input = False
 
@@ -811,7 +812,7 @@ if generate_button:
                     pdf_filename = f"Invoice_{current_invoice_number}.pdf"
                     attachments_to_send.append((pdf_filename, pdf_buffer.getvalue()))
                 
-                if send_email:
+                if st.session_state.send_email:
                     subject, body = _customize_email_body(current_matter_number, current_invoice_number)
                     if not _send_email_with_attachment(recipient_email, subject, body, attachments_to_send):
                         st.subheader(f"Invoice {i + 1} (Failed to Email)")
@@ -830,7 +831,7 @@ if generate_button:
                     billing_end_date = current_start_date - datetime.timedelta(days=1)
                     billing_start_date = billing_end_date.replace(day=1)
             
-            if not send_email and num_invoices > 1:
+            if not st.session_state.send_email and num_invoices > 1:
                 zip_buf = io.BytesIO()
                 with zipfile.ZipFile(zip_buf, 'w', zipfile.ZIP_DEFLATED) as zip_file:
                     for filename, data in attachments_list:
@@ -843,7 +844,7 @@ if generate_button:
                     mime="application/zip",
                     key="download_zip"
                 )
-            elif not send_email:
+            elif not st.session_state.send_email:
                 st.subheader("Generated Invoice(s)")
                 for filename, data in attachments_list:
                     st.download_button(
