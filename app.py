@@ -582,6 +582,7 @@ def update_send_email():
     st.session_state.send_email = st.session_state.send_email_checkbox
     logging.debug(f"Updated st.session_state.send_email to {st.session_state.send_email}")
 
+# Help & FAQs Expander
 with st.expander("Help & FAQs"):
     st.markdown("""
     ### FAQs
@@ -593,13 +594,15 @@ with st.expander("Help & FAQs"):
     - **How to use a custom logo?** Upload a valid JPG or PNG image file in the Advanced Settings tab when PDF output is enabled. Only JPEG and PNG formats are supported. Other formats (e.g., GIF, BMP) will be converted to PNG. Maximum file size is 5MB. Ensure the image is not corrupted and displays correctly in an image viewer. If no logo is uploaded, the default logo (assets/nelsonmurdock2.jpg or assets/icon.jpg) or a placeholder will be used.
     - **What if my logo doesn’t appear in the PDF?** Check that the file is a valid JPEG or PNG, not corrupted, and under 5MB. Try re-saving the image using an image editor. If issues persist, enable logging to debug (see Advanced Settings for custom default logo path).
     """)
-    st.markdown("<h3 style='color: #1E1E1E;'>Output & Delivery Options</h3>", unsafe_allow_html=True)
-    st.checkbox(
-        "Send Invoices via Email",
-        value=st.session_state.send_email,
-        key="send_email_checkbox",
-        on_change=update_send_email
-    )
+
+# Output & Delivery Options
+st.markdown("<h3 style='color: #1E1E1E;'>Output & Delivery Options</h3>", unsafe_allow_html=True)
+st.checkbox(
+    "Send Invoices via Email",
+    value=st.session_state.send_email,
+    key="send_email_checkbox",
+    on_change=update_send_email
+)
 
 # Sidebar
 st.sidebar.markdown("<h2 style='color: #1E1E1E;'>Quick Links</h2>", unsafe_allow_html=True)
