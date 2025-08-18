@@ -324,8 +324,8 @@ def _generate_expenses(expense_count: int, billing_start_date: datetime.date, bi
         row = {
             "INVOICE_DESCRIPTION": invoice_desc, "CLIENT_ID": client_id, "LAW_FIRM_ID": law_firm_id,
             "LINE_ITEM_DATE": line_item_date.strftime("%Y-%m-%d"), "TIMEKEEPER_NAME": "",
-            "TIMEKEEPER_CLASSIFICATION": "", "TIMEKEEPER_ID": "", "TASK_CODE": "",
-            "ACTIVITY_CODE": "", "EXPENSE_CODE": expense_code, "DESCRIPTION": description,
+            "TIMEKEEPER_CLASSIFICATION": "", "TIMEKEEPER_ID": "",
+            "TASK_CODE": "", "ACTIVITY_CODE": "", "EXPENSE_CODE": expense_code, "DESCRIPTION": description,
             "HOURS": hours, "RATE": rate, "LINE_ITEM_TOTAL": line_item_total
         }
         rows.append(row)
@@ -341,8 +341,8 @@ def _generate_expenses(expense_count: int, billing_start_date: datetime.date, bi
         row = {
             "INVOICE_DESCRIPTION": invoice_desc, "CLIENT_ID": client_id, "LAW_FIRM_ID": law_firm_id,
             "LINE_ITEM_DATE": line_item_date.strftime("%Y-%m-%d"), "TIMEKEEPER_NAME": "",
-            "TIMEKEEPER_CLASSIFICATION": "", "TIMEKEEPER_ID": "", "TASK_CODE": "",
-            "ACTIVITY_CODE": "", "EXPENSE_CODE": expense_code, "DESCRIPTION": description,
+            "TIMEKEEPER_CLASSIFICATION": "", "TIMEKEEPER_ID": "",
+            "TASK_CODE": "", "ACTIVITY_CODE": "", "EXPENSE_CODE": expense_code, "DESCRIPTION": description,
             "HOURS": hours, "RATE": rate, "LINE_ITEM_TOTAL": line_item_total
         }
         rows.append(row)
@@ -356,7 +356,6 @@ def _generate_invoice_data(fee_count: int, expense_count: int, timekeeper_data: 
     total_amount = sum(float(row["LINE_ITEM_TOTAL"]) for row in rows)
     
     if include_block_billed and rows:
-        block_billed_rows = []
         block_size = random.randint(2, 5)
         selected_rows = random.sample(rows, min(block_size, len(rows)))
         total_hours = sum(float(row["HOURS"]) for row in selected_rows)
@@ -461,10 +460,10 @@ def _create_pdf_invoice(df: pd.DataFrame, total_amount: float, invoice_number: s
     styles = getSampleStyleSheet()
     normal_style = styles['Normal']
     heading_style = ParagraphStyle(name='Heading', fontSize=12, leading=14, alignment=TA_LEFT)
-    right_align_style = ParagraphStyle(name='RightAlign', fontSize=10, leading=12, alignment=TA_RIGHT)
+    right_align_style = styles['Heading4']
     wrap_style = ParagraphStyle(name='Wrap', fontSize=10, leading=12, wordWrap='CJK', alignment=TA_LEFT)
 
-    # Header with Law Firm on left and Client on right
+    # Header with Law Firm on left and Client on right, aligned symmetrically
     law_firm_info = f"Nelson and Murdock<br/>{law_firm_id}<br/>One Park Avenue<br/>Manhattan, NY 10003"
     law_firm_para = Paragraph(law_firm_info, normal_style)
     client_info = f"A Onit Inc.<br/>{client_id}<br/>1360 Post Oak Blvd<br/>Houston, TX 77056"
@@ -490,7 +489,7 @@ def _create_pdf_invoice(df: pd.DataFrame, total_amount: float, invoice_number: s
             header_left_content = law_firm_para
 
     header_data = [[header_left_content, client_para]]
-    header_table = Table(header_data, colWidths=[4.5 * inch, 3.5 * inch])
+    header_table = Table(header_data, colWidths=[3.5 * inch, 4.5 * inch])  # Adjusted to mirror alignment
     header_table.setStyle(TableStyle([
         ('VALIGN', (0, 0), (-1, -1), 'TOP'),
         ('LEFTPADDING', (0, 0), (0, 0), 0),
@@ -500,10 +499,10 @@ def _create_pdf_invoice(df: pd.DataFrame, total_amount: float, invoice_number: s
     elements.append(header_table)
     elements.append(Spacer(1, 0.1 * inch))
 
-    # Invoice details aligned with the right side of client details
+    # Invoice details restored to original position
     invoice_info = f"Invoice #: {invoice_number}<br/>Invoice Date: {invoice_date.strftime('%Y-%m-%d')}<br/>Billing Period: {billing_start_date.strftime('%Y-%m-%d')} to {billing_end_date.strftime('%Y-%m-%d')}"
     invoice_para = Paragraph(invoice_info, right_align_style)
-    invoice_table = Table([[invoice_para]], colWidths=[3.5 * inch])
+    invoice_table = Table([[invoice_para]], colWidths=[4.5 * inch])
     invoice_table.setStyle(TableStyle([
         ('ALIGN', (0, 0), (-1, -1), 'RIGHT'),
         ('VALIGN', (0, 0), (-1, -1), 'TOP'),
@@ -511,8 +510,8 @@ def _create_pdf_invoice(df: pd.DataFrame, total_amount: float, invoice_number: s
     elements.append(invoice_table)
     elements.append(Spacer(1, 0.1 * inch))
 
-    # Table with updated columns and wrapped text
-    data = [["Date", "Timekeeper", "Task Code", "Activity Code", "Description", "Hours", "Rate", "Total"]]
+    # Table with updated columns and wrapped text, including Task Code and Activity Code headers
+    data = [["Date", Paragraph("Task Code", wrap_style), Paragraph("Activity Code", wrap_style), "Timekeeper", "Description", "Hours", "Rate", "Total"]]
     for _, row in df.iterrows():
         date = row["LINE_ITEM_DATE"]
         timekeeper = Paragraph(row["TIMEKEEPER_NAME"] if row["TIMEKEEPER_NAME"] else "N/A", wrap_style)
@@ -522,9 +521,9 @@ def _create_pdf_invoice(df: pd.DataFrame, total_amount: float, invoice_number: s
         hours = f"{row['HOURS']:.1f}" if not row["EXPENSE_CODE"] else f"{int(row['HOURS'])}"
         rate = f"${row['RATE']:.2f}" if row["RATE"] else "N/A"
         total = f"${row['LINE_ITEM_TOTAL']:.2f}"
-        data.append([date, timekeeper, task_code, activity_code, description, hours, rate, total])
+        data.append([date, task_code, activity_code, timekeeper, description, hours, rate, total])
 
-    table = Table(data, colWidths=[0.8 * inch, 1.2 * inch, 0.7 * inch, 0.7 * inch, 1.8 * inch, 0.8 * inch, 0.8 * inch, 0.8 * inch])
+    table = Table(data, colWidths=[0.8 * inch, 0.7 * inch, 0.7 * inch, 1.2 * inch, 1.8 * inch, 0.8 * inch, 0.8 * inch, 0.8 * inch])
     table.setStyle(TableStyle([
         ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
         ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
