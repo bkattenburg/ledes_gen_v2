@@ -818,7 +818,7 @@ if st.session_state.send_email:
         recipient_email = st.text_input("Recipient Email Address:")
         try:
             sender_email = st.secrets.email.email_from
-            st.caption(f"Sender Email will be from: {sender_email}")
+            st.caption(f"Sender Email will be from: {st.secrets.get('email', {}).get('username', 'N/A')}")
         except AttributeError:
             st.caption("Sender Email: Not configured (check secrets.toml)")
         st.text_input("Email Subject Template:", value=f"LEDES Invoice for {matter_number_base} (Invoice #{{invoice_number}})", key="email_subject")
