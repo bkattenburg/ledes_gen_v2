@@ -454,7 +454,7 @@ def _get_logo_bytes(uploaded_logo: Optional[Any], law_firm_id: str) -> bytes:
     return buf.getvalue()
 
 def _create_pdf_invoice(df: pd.DataFrame, total_amount: float, invoice_number: str, invoice_date: datetime.date, billing_start_date: datetime.date, billing_end_date: datetime.date, client_id: str, law_firm_id: str, logo_bytes: bytes, include_logo: bool = True) -> io.BytesIO:
-    """Generate a PDF invoice matching the provided format."""
+    """Generate a PDF invoice matching the provided format with side-by-side header."""
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(buffer, pagesize=letter)
     elements = []
@@ -464,7 +464,7 @@ def _create_pdf_invoice(df: pd.DataFrame, total_amount: float, invoice_number: s
     right_align_style = ParagraphStyle(name='RightAlign', fontSize=10, leading=12, alignment=TA_RIGHT)
     wrap_style = ParagraphStyle(name='Wrap', fontSize=10, leading=12, wordWrap='CJK', alignment=TA_LEFT)
 
-    # Header with Law Firm and Client Information
+    # Header with Law Firm on left and Client on right, side by side
     law_firm_info = f"{law_firm_id}<br/>{'Nelson & Murdock, Attorneys at Law' if law_firm_id == CONFIG['DEFAULT_LAW_FIRM_ID'] else 'Generic Law Firm'}<br/>One Park Avenue<br/>Manhattan, NY 10003"
     law_firm_para = Paragraph(law_firm_info, normal_style)
     client_info = f"{client_id}<br/>A Onit Inc.<br/>1360 Post Oak Blvd<br/>Houston, TX 77056"
@@ -489,9 +489,7 @@ def _create_pdf_invoice(df: pd.DataFrame, total_amount: float, invoice_number: s
             st.warning("Could not add logo to PDF. Using text instead.")
             header_left_content = law_firm_para
 
-    invoice_info = f"Invoice #: {invoice_number}<br/>Invoice Date: {invoice_date.strftime('%Y-%m-%d')}<br/>Billing Period: {billing_start_date.strftime('%Y-%m-%d')} to {billing_end_date.strftime('%Y-%m-%d')}"
-    invoice_para = Paragraph(invoice_info, right_align_style)
-    header_data = [[header_left_content, ""], [client_para, invoice_para]]
+    header_data = [[header_left_content, client_para]]
     header_table = Table(header_data, colWidths=[4.5 * inch, 3.5 * inch])
     header_table.setStyle(TableStyle([
         ('VALIGN', (0, 0), (-1, -1), 'TOP'),
@@ -500,7 +498,10 @@ def _create_pdf_invoice(df: pd.DataFrame, total_amount: float, invoice_number: s
     elements.append(header_table)
     elements.append(Spacer(1, 0.25 * inch))
 
-    elements.append(Paragraph("Invoice", heading_style))
+    # Invoice details below the header
+    invoice_info = f"Invoice #: {invoice_number}<br/>Invoice Date: {invoice_date.strftime('%Y-%m-%d')}<br/>Billing Period: {billing_start_date.strftime('%Y-%m-%d')} to {billing_end_date.strftime('%Y-%m-%d')}"
+    invoice_para = Paragraph(invoice_info, right_align_style)
+    elements.append(invoice_para)
     elements.append(Spacer(1, 0.1 * inch))
 
     # Table with updated columns and wrapped text
@@ -850,36 +851,3 @@ if generate_button:
                                 data=data,
                                 file_name=filename,
                                 mime="text/plain" if filename.endswith(".txt") else "application/pdf",
-                                key=f"download_{filename}_{i}"
-                            )
-                else:
-                    attachments_list.extend(attachments_to_send)
-                
-                if multiple_periods:
-                    billing_end_date = current_start_date - datetime.timedelta(days=1)
-                    billing_start_date = billing_end_date.replace(day=1)
-            
-            if not st.session_state.send_email and num_invoices > 1:
-                zip_buf = io.BytesIO()
-                with zipfile.ZipFile(zip_buf, 'w', zipfile.ZIP_DEFLATED) as zip_file:
-                    for filename, data in attachments_list:
-                        zip_file.writestr(filename, data)
-                zip_buf.seek(0)
-                st.download_button(
-                    label="Download All Invoices as ZIP",
-                    data=zip_buf.getvalue(),
-                    file_name="invoices.zip",
-                    mime="application/zip",
-                    key="download_zip"
-                )
-            elif not st.session_state.send_email:
-                st.subheader("Generated Invoice(s)")
-                for filename, data in attachments_list:
-                    st.download_button(
-                        label=f"Download {filename}",
-                        data=data,
-                        file_name=filename,
-                        mime="text/plain" if filename.endswith(".txt") else "application/pdf",
-                        key=f"download_{filename}"
-                    )
-            status.update(label="Invoice generation complete!", state="complete")
