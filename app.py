@@ -537,7 +537,7 @@ def _create_pdf_invoice(df: pd.DataFrame, total_amount: float, invoice_number: s
     elements.append(Spacer(1, 0.1 * inch))
 
     # Invoice details
-    invoice_info = f"Invoice #: {invoice_number}<br/>Matter Number: {matter_number}<br/>Invoice Date: {invoice_date.strftime('%Y-%m-%d')}<br/>Billing Period: {billing_start_date.strftime('%Y-%m-%d')} to {billing_end_date.strftime('%Y-%m-%d')}"
+    invoice_info = f"Invoice #: {invoice_number}<br/>Invoice Date: {invoice_date.strftime('%Y-%m-%d')}<br/>Billing Period: {billing_start_date.strftime('%Y-%m-%d')} to {billing_end_date.strftime('%Y-%m-%d')}"
     invoice_para = Paragraph(invoice_info, right_align_style)
     invoice_table = Table([[invoice_para]], colWidths=[7.5 * inch])
     invoice_table.setStyle(TableStyle([
@@ -601,10 +601,11 @@ def _create_pdf_invoice(df: pd.DataFrame, total_amount: float, invoice_number: s
 
     # Build totals table aligned under "Total" column
     totals_data = [
-        ["", f"Total Fees: ${total_fees:.2f}"],
-        ["", f"Total Expenses: ${total_expenses:.2f}"],
-        ["", f"Invoice Total: ${total_amount:.2f}"]
+    ["", f"Total Fees: ${total_fees:,.2f}"],
+    ["", f"Total Expenses: ${total_expenses:,.2f}"],
+    ["", f"Invoice Total: ${total_amount:,.2f}"]
     ]
+
     totals_table = Table(totals_data, colWidths=[6.7 * inch, 0.8 * inch])  # adjust first width to push right
     totals_table.setStyle(TableStyle([
         ('ALIGN', (1, 0), (1, -1), 'RIGHT'),
@@ -790,7 +791,7 @@ with tab_objects[2]:
             value=5,
             format="%d"
         )
-    max_daily_hours = st.number_input("Max Daily Timekeeper Hours:", min_value=1, max_value=24, value=16, step=1)
+    max_daily_hours = st.number_input("Max Daily Timekeeper Hours:", min_value=1, max_value=24, value=10, step=1)
     
     if spend_agent:
         st.markdown("<h3 style='color: #1E1E1E;'>Mandatory Items</h3>", unsafe_allow_html=True)
