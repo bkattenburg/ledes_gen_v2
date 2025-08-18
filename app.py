@@ -593,7 +593,7 @@ def _create_pdf_invoice(df: pd.DataFrame, total_amount: float, invoice_number: s
     ]))
     elements.append(table)
 
-        elements.append(Spacer(1, 0.25 * inch))
+    elements.append(Spacer(1, 0.25 * inch))
 
     # --- Calculate Fees and Expenses separately ---
     total_fees = df.loc[df["EXPENSE_CODE"] == "", "LINE_ITEM_TOTAL"].sum()
