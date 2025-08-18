@@ -368,7 +368,7 @@ def _generate_invoice_data(fee_count: int, expense_count: int, timekeeper_data: 
             "LINE_ITEM_DATE": selected_rows[0]["LINE_ITEM_DATE"], "TIMEKEEPER_NAME": selected_rows[0]["TIMEKEEPER_NAME"],
             "TIMEKEEPER_CLASSIFICATION": selected_rows[0]["TIMEKEEPER_CLASSIFICATION"],
             "TIMEKEEPER_ID": selected_rows[0]["TIMEKEEPER_ID"], "TASK_CODE": selected_rows[0]["TASK_CODE"],
-            "ACTIVITY_CODE": selected_rows[0]["ACTIVITY_CODE"], "EXPENSE_CODE": "",
+            "ACTIVITY_CODEGGING": selected_rows[0]["ACTIVITY_CODE"], "EXPENSE_CODE": "",
             "DESCRIPTION": block_description, "HOURS": total_hours, "RATE": selected_rows[0]["RATE"],
             "LINE_ITEM_TOTAL": total_amount_block
         }
@@ -609,7 +609,9 @@ if "send_email" not in st.session_state:
     st.session_state.send_email = False
 
 # Dynamic Tabs
-tabs = ["File Upload & Output Options", "Invoice Inputs", "Advanced Settings", "Email Configuration"]
+tabs = ["File Upload & Output Options", "Invoice Inputs", "Advanced Settings"]
+if st.session_state.send_email:
+    tabs.append("Email Configuration")
 tab_objects = st.tabs(tabs)
 
 with tab_objects[0]:
@@ -727,8 +729,8 @@ with tab_objects[2]:
         else:
             num_invoices = st.number_input("Number of Invoices to Create:", min_value=1, value=1, step=1, help="Creates N invoices. When 'Multiple Billing Periods' is enabled, one invoice per period.")
 
-with tab_objects[3]:
-    if st.session_state.send_email:
+if st.session_state.send_email:
+    with tab_objects[3]:
         st.markdown("<h2 style='color: #1E1E1E;'>Email Configuration</h2>", unsafe_allow_html=True)
         recipient_email = st.text_input("Recipient Email Address:")
         try:
@@ -738,8 +740,8 @@ with tab_objects[3]:
             st.caption("Sender Email: Not configured (check secrets.toml)")
         st.text_input("Email Subject Template:", value=f"LEDES Invoice for {matter_number_base} (Invoice #{{invoice_number}})", key="email_subject")
         st.text_area("Email Body Template:", value=f"Please find the attached invoice files for matter {{matter_number}}.\n\nBest regards,\nYour Law Firm", height=150, key="email_body")
-    else:
-        st.info("Email configuration is disabled. Enable 'Send Invoices via Email' in the File Upload & Output Options tab to configure email settings.")
+else:
+    recipient_email = ""  # Initialize to avoid undefined variable in validation
 
 # Validation Logic
 is_valid_input = True
