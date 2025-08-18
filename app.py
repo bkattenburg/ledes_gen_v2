@@ -368,7 +368,7 @@ def _generate_invoice_data(fee_count: int, expense_count: int, timekeeper_data: 
             "LINE_ITEM_DATE": selected_rows[0]["LINE_ITEM_DATE"], "TIMEKEEPER_NAME": selected_rows[0]["TIMEKEEPER_NAME"],
             "TIMEKEEPER_CLASSIFICATION": selected_rows[0]["TIMEKEEPER_CLASSIFICATION"],
             "TIMEKEEPER_ID": selected_rows[0]["TIMEKEEPER_ID"], "TASK_CODE": selected_rows[0]["TASK_CODE"],
-            "ACTIVITY_CODEGGING": selected_rows[0]["ACTIVITY_CODE"], "EXPENSE_CODE": "",
+            "ACTIVITY_CODE": selected_rows[0]["ACTIVITY_CODE"], "EXPENSE_CODE": "",
             "DESCRIPTION": block_description, "HOURS": total_hours, "RATE": selected_rows[0]["RATE"],
             "LINE_ITEM_TOTAL": total_amount_block
         }
@@ -729,8 +729,10 @@ with tab_objects[2]:
         else:
             num_invoices = st.number_input("Number of Invoices to Create:", min_value=1, value=1, step=1, help="Creates N invoices. When 'Multiple Billing Periods' is enabled, one invoice per period.")
 
+# Email Configuration Tab (only created if send_email is True)
 if st.session_state.send_email:
-    with tab_objects[3]:
+    email_tab_index = len(tabs) - 1  # Index of Email Configuration tab
+    with tab_objects[email_tab_index]:
         st.markdown("<h2 style='color: #1E1E1E;'>Email Configuration</h2>", unsafe_allow_html=True)
         recipient_email = st.text_input("Recipient Email Address:")
         try:
