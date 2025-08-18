@@ -329,203 +329,152 @@ def _generate_expenses(expense_count: int, billing_start_date: datetime.date, bi
             "HOURS": hours, "RATE": rate, "LINE_ITEM_TOTAL": line_item_total
         }
         rows.append(row)
-
-    remaining_expense_count = expense_count - e101_actual_count
-    if remaining_expense_count > 0:
-        for _ in range(remaining_expense_count):
-            description = random.choice(OTHER_EXPENSE_DESCRIPTIONS)
-            expense_code = CONFIG['EXPENSE_CODES'][description]
-            hours = 1
-            rate = round(random.uniform(25, 200), 2)
-            random_day_offset = random.randint(0, num_days - 1)
-            line_item_date = billing_start_date + datetime.timedelta(days=random_day_offset)
-            line_item_total = round(hours * rate, 2)
-            row = {
-                "INVOICE_DESCRIPTION": invoice_desc, "CLIENT_ID": client_id,
-                "LAW_FIRM_ID": law_firm_id, "LINE_ITEM_DATE": line_item_date.strftime("%Y-%m-%d"),
-                "TIMEKEEPER_NAME": "", "TIMEKEEPER_CLASSIFICATION": "",
-                "TIMEKEEPER_ID": "", "TASK_CODE": "", "ACTIVITY_CODE": "",
-                "EXPENSE_CODE": expense_code, "DESCRIPTION": description,
-                "HOURS": hours, "RATE": rate, "LINE_ITEM_TOTAL": line_item_total
-            }
-            rows.append(row)
-    return rows
-
-def _handle_block_billing(rows: List[Dict], include_block_billed: bool, task_activity_desc: List[Tuple[str, str, str]]) -> List[Dict]:
-    """Handle block billing for invoice rows."""
-    if not include_block_billed:
-        rows = [row for row in rows if not ("; " in row["DESCRIPTION"])]
-    elif include_block_billed:
-        if not any('; ' in row['DESCRIPTION'] for row in rows):
-            for task_code, activity_code, desc in task_activity_desc:
-                if '; ' in desc and len(rows) > 0:
-                    extra = rows[0].copy()
-                    extra['DESCRIPTION'] = desc
-                    extra['TASK_CODE'] = task_code
-                    extra['ACTIVITY_CODE'] = activity_code
-                    rows.insert(0, extra)
-                    break
+    
+    for _ in range(expense_count - e101_actual_count):
+        description = random.choice(OTHER_EXPENSE_DESCRIPTIONS)
+        expense_code = CONFIG['EXPENSE_CODES'][description]
+        hours = random.randint(1, 100)
+        rate = round(random.uniform(5.0, 100.0), 2)
+        random_day_offset = random.randint(0, num_days - 1)
+        line_item_date = billing_start_date + datetime.timedelta(days=random_day_offset)
+        line_item_total = round(hours * rate, 2)
+        row = {
+            "INVOICE_DESCRIPTION": invoice_desc, "CLIENT_ID": client_id, "LAW_FIRM_ID": law_firm_id,
+            "LINE_ITEM_DATE": line_item_date.strftime("%Y-%m-%d"), "TIMEKEEPER_NAME": "",
+            "TIMEKEEPER_CLASSIFICATION": "", "TIMEKEEPER_ID": "", "TASK_CODE": "",
+            "ACTIVITY_CODE": "", "EXPENSE_CODE": expense_code, "DESCRIPTION": description,
+            "HOURS": hours, "RATE": rate, "LINE_ITEM_TOTAL": line_item_total
+        }
+        rows.append(row)
     return rows
 
 def _generate_invoice_data(fee_count: int, expense_count: int, timekeeper_data: List[Dict], client_id: str, law_firm_id: str, invoice_desc: str, billing_start_date: datetime.date, billing_end_date: datetime.date, task_activity_desc: List[Tuple[str, str, str]], major_task_codes: set, max_hours_per_tk_per_day: int, include_block_billed: bool, faker_instance: Faker) -> Tuple[List[Dict], float]:
-    """Generate invoice data by combining fees, expenses, and block billing."""
-    current_invoice_total = 0.0
-    fee_rows = _generate_fees(fee_count, timekeeper_data, billing_start_date, billing_end_date, task_activity_desc, major_task_codes, max_hours_per_tk_per_day, faker_instance, client_id, law_firm_id, invoice_desc)
-    expense_rows = _generate_expenses(expense_count, billing_start_date, billing_end_date, client_id, law_firm_id, invoice_desc)
-    rows = fee_rows + expense_rows
-    for row in rows:
-        current_invoice_total += row["LINE_ITEM_TOTAL"]
-    rows = _handle_block_billing(rows, include_block_billed, task_activity_desc)
-    return rows, current_invoice_total
+    """Generate invoice data with fees and expenses."""
+    rows = []
+    rows.extend(_generate_fees(fee_count, timekeeper_data, billing_start_date, billing_end_date, task_activity_desc, major_task_codes, max_hours_per_tk_per_day, faker_instance, client_id, law_firm_id, invoice_desc))
+    rows.extend(_generate_expenses(expense_count, billing_start_date, billing_end_date, client_id, law_firm_id, invoice_desc))
+    total_amount = sum(float(row["LINE_ITEM_TOTAL"]) for row in rows)
+    
+    if include_block_billed and rows:
+        block_billed_rows = []
+        block_size = random.randint(2, 5)
+        selected_rows = random.sample(rows, min(block_size, len(rows)))
+        total_hours = sum(float(row["HOURS"]) for row in selected_rows)
+        total_amount_block = sum(float(row["LINE_ITEM_TOTAL"]) for row in selected_rows)
+        descriptions = [row["DESCRIPTION"] for row in selected_rows]
+        block_description = "; ".join(descriptions)
+        block_row = {
+            "INVOICE_DESCRIPTION": invoice_desc, "CLIENT_ID": client_id, "LAW_FIRM_ID": law_firm_id,
+            "LINE_ITEM_DATE": selected_rows[0]["LINE_ITEM_DATE"], "TIMEKEEPER_NAME": selected_rows[0]["TIMEKEEPER_NAME"],
+            "TIMEKEEPER_CLASSIFICATION": selected_rows[0]["TIMEKEEPER_CLASSIFICATION"],
+            "TIMEKEEPER_ID": selected_rows[0]["TIMEKEEPER_ID"], "TASK_CODE": selected_rows[0]["TASK_CODE"],
+            "ACTIVITY_CODE": selected_rows[0]["ACTIVITY_CODE"], "EXPENSE_CODE": "",
+            "DESCRIPTION": block_description, "HOURS": total_hours, "RATE": selected_rows[0]["RATE"],
+            "LINE_ITEM_TOTAL": total_amount_block
+        }
+        rows = [row for row in rows if row not in selected_rows]
+        rows.append(block_row)
+        total_amount = sum(float(row["LINE_ITEM_TOTAL"]) for row in rows)
+    
+    return rows, total_amount
 
 def _ensure_mandatory_lines(rows: List[Dict], timekeeper_data: List[Dict], invoice_desc: str, client_id: str, law_firm_id: str, billing_start_date: datetime.date, billing_end_date: datetime.date, selected_items: List[str]) -> List[Dict]:
-    """Add mandatory line items based on user selection."""
-    def _rand_date_str():
-        delta = billing_end_date - billing_start_date
-        num_days = max(1, delta.days + 1)
-        off = random.randint(0, num_days - 1)
-        return (billing_start_date + datetime.timedelta(days=off)).strftime("%Y-%m-%d")
-
-    for item in selected_items:
-        config = CONFIG['MANDATORY_ITEMS'][item]
-        if config['is_expense']:
-            hours = 1
-            rate = round(random.uniform(25, 80), 2)
-            total = round(hours * rate, 2)
+    """Ensure mandatory line items are included."""
+    delta = billing_end_date - billing_start_date
+    num_days = max(1, delta.days + 1)
+    for item_name in selected_items:
+        item = CONFIG['MANDATORY_ITEMS'][item_name]
+        random_day_offset = random.randint(0, num_days - 1)
+        line_item_date = billing_start_date + datetime.timedelta(days=random_day_offset)
+        if item['is_expense']:
             row = {
                 "INVOICE_DESCRIPTION": invoice_desc, "CLIENT_ID": client_id, "LAW_FIRM_ID": law_firm_id,
-                "LINE_ITEM_DATE": _rand_date_str(), "TIMEKEEPER_NAME": "", "TIMEKEEPER_CLASSIFICATION": "", "TIMEKEEPER_ID": "",
-                "TASK_CODE": "", "ACTIVITY_CODE": "", "EXPENSE_CODE": config['expense_code'],
-                "DESCRIPTION": config['desc'], "HOURS": hours, "RATE": rate, "LINE_ITEM_TOTAL": total
+                "LINE_ITEM_DATE": line_item_date.strftime("%Y-%m-%d"), "TIMEKEEPER_NAME": "",
+                "TIMEKEEPER_CLASSIFICATION": "", "TIMEKEEPER_ID": "", "TASK_CODE": "",
+                "ACTIVITY_CODE": "", "EXPENSE_CODE": item['expense_code'], "DESCRIPTION": item['desc'],
+                "HOURS": random.randint(1, 10), "RATE": round(random.uniform(5.0, 100.0), 2)
             }
+            row["LINE_ITEM_TOTAL"] = round(row["HOURS"] * row["RATE"], 2)
         else:
-            base_tk = _find_timekeeper_by_name(timekeeper_data, config['tk_name']) or (timekeeper_data[0] if timekeeper_data else None)
-            rate = float(base_tk.get("RATE", 250.0)) if base_tk else 250.0
-            hours = round(random.uniform(0.5, 3.0), 1)
-            total = round(hours * rate, 2)
             row = {
                 "INVOICE_DESCRIPTION": invoice_desc, "CLIENT_ID": client_id, "LAW_FIRM_ID": law_firm_id,
-                "LINE_ITEM_DATE": _rand_date_str(), "TIMEKEEPER_NAME": "", "TIMEKEEPER_CLASSIFICATION": "", "TIMEKEEPER_ID": "",
-                "TASK_CODE": config['task'], "ACTIVITY_CODE": config['activity'], "EXPENSE_CODE": "",
-                "DESCRIPTION": config['desc'], "HOURS": hours, "RATE": rate, "LINE_ITEM_TOTAL": total
+                "LINE_ITEM_DATE": line_item_date.strftime("%Y-%m-%d"), "TIMEKEEPER_NAME": item['tk_name'],
+                "TIMEKEEPER_CLASSIFICATION": "", "TIMEKEEPER_ID": "", "TASK_CODE": item['task'],
+                "ACTIVITY_CODE": item['activity'], "EXPENSE_CODE": "", "DESCRIPTION": item['desc'],
+                "HOURS": round(random.uniform(0.5, 8.0), 1), "RATE": 0.0
             }
+            row = _force_timekeeper_on_row(row, item['tk_name'], timekeeper_data)
         rows.append(row)
-
-    for r in rows:
-        d = str(r.get("DESCRIPTION", "")).lower()
-        if "kbcg" in d:
-            _force_timekeeper_on_row(r, "Tom Delaganis", timekeeper_data or [])
-        if "john doe" in d:
-            _force_timekeeper_on_row(r, "Ryan Kinsey", timekeeper_data or [])
     return rows
 
 def _validate_image_bytes(image_bytes: bytes) -> bool:
-    """Validate if bytes represent a valid image."""
+    """Validate that the provided bytes represent a valid image."""
     try:
         img = PILImage.open(io.BytesIO(image_bytes))
-        img.verify()  # Verify image integrity
-        img = PILImage.open(io.BytesIO(image_bytes))  # Re-open after verify
-        return img.format in ['JPEG', 'PNG']
-    except Exception as e:
-        logging.error(f"Image validation failed: {e}")
+        img.verify()
+        return True
+    except Exception:
         return False
 
 def _get_logo_bytes(uploaded_logo: Optional[Any], law_firm_id: str) -> bytes:
-    with st.status("Processing logo...") as status:
-        if uploaded_logo:
-            try:
-                status.update(label="Validating uploaded logo...")
-                logo_bytes = uploaded_logo.read()
-                if _validate_image_bytes(logo_bytes):
-                    status.update(label="Uploaded logo validated", state="complete")
-                    return logo_bytes
-                st.warning("Uploaded logo is not a valid JPEG or PNG. Using default logo.")
-            except Exception as e:
-                logging.error(f"Error reading uploaded logo: {e}")
-                st.warning("Failed to read uploaded logo. Using default logo.")
-        
-        logo_file_name = "nelsonmurdock2.jpg" if law_firm_id == CONFIG['DEFAULT_LAW_FIRM_ID'] else "icon.jpg"
-        script_dir = os.path.dirname(__file__)
-        logo_path = os.path.join(script_dir, "assets", logo_file_name)
+    """Get logo bytes from uploaded file or default path."""
+    if uploaded_logo:
         try:
-            status.update(label=f"Loading default logo ({logo_file_name})...")
-            with open(logo_path, "rb") as f:
-                logo_bytes = f.read()
+            logo_bytes = uploaded_logo.read()
             if _validate_image_bytes(logo_bytes):
-                status.update(label="Default logo validated", state="complete")
                 return logo_bytes
-            st.warning(f"Default logo ({logo_file_name}) is not a valid JPEG or PNG. Using placeholder.")
+            st.warning("Uploaded logo is not a valid JPEG or PNG. Using default logo.")
         except Exception as e:
-            logging.error(f"Logo load failed: {e}")
-            st.warning(f"Logo file ({logo_file_name}) not found or invalid. Using placeholder.")
-        
-        status.update(label="Generating placeholder logo...")
-        img = PILImage.new("RGB", (128, 128), color="white")
-        draw = ImageDraw.Draw(img)
-        try:
-            font = ImageFont.load_default()
-        except Exception:
-            font = ImageFont.load_default()
-        draw.text((10, 20), "Logo", font=font, fill=(0, 0, 0))
-        buf = io.BytesIO()
-        img.save(buf, format="PNG")
-        buf.seek(0)
-        status.update(label="Placeholder logo generated", state="complete")
-        return buf.getvalue()
-        
-def _create_pdf_invoice(df: pd.DataFrame, total_amount: float, invoice_number: str, invoice_date: datetime.date, billing_start_date: datetime.date, billing_end_date: datetime.date, client_id: str, law_firm_id: str, logo_bytes: bytes, include_logo: bool = True) -> io.BytesIO:
-    """Create a PDF invoice with provided logo."""
-    buffer = io.BytesIO()
+            logging.error(f"Error reading uploaded logo: {e}")
+            st.warning("Failed to read uploaded logo. Using default logo.")
+    
+    logo_file_name = "nelsonmurdock2.jpg" if law_firm_id == CONFIG['DEFAULT_LAW_FIRM_ID'] else "icon.jpg"
+    script_dir = os.path.dirname(__file__)
+    logo_path = os.path.join(script_dir, "assets", logo_file_name)
     try:
-        doc = SimpleDocTemplate(
-            buffer,
-            pagesize=letter,
-            leftMargin=1.0 * inch, rightMargin=1.0 * inch,
-            topMargin=1.0 * inch, bottomMargin=1.0 * inch
-        )
-        styles = getSampleStyleSheet()
-        available_width = doc.width
-        elements = []
+        with open(logo_path, "rb") as f:
+            logo_bytes = f.read()
+        if _validate_image_bytes(logo_bytes):
+            return logo_bytes
+        st.warning(f"Default logo ({logo_file_name}) is not a valid JPEG or PNG. Using placeholder.")
+    except Exception as e:
+        logging.error(f"Logo load failed: {e}")
+        st.warning(f"Logo file ({logo_file_name}) not found or invalid. Using placeholder.")
+    
+    img = PILImage.new("RGB", (128, 128), color="white")
+    draw = ImageDraw.Draw(img)
+    try:
+        font = ImageFont.load_default()
+    except Exception:
+        font = ImageFont.load_default()
+    draw.text((10, 20), "Logo", font=font, fill=(0, 0, 0))
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    buf.seek(0)
+    return buf.getvalue()
 
-        if law_firm_id == CONFIG['DEFAULT_LAW_FIRM_ID']:
-            law_firm_info = (
-                f"<b>Nelson and Murdock</b><br/>{law_firm_id}<br/>"
-                "One Park Avenue<br/>Manhattan, NY 10003"
-            )
-        else:
-            law_firm_info = (
-                f"<b>Your Law Firm Name</b><br/>{law_firm_id}<br/>"
-                "1001 Main Street, Big City, CA 90000"
-            )
-
-        left_style = ParagraphStyle(name="Left", parent=styles["Normal"], alignment=TA_LEFT, leading=12)
-        law_firm_para = Paragraph(law_firm_info, left_style)
-        header_left_content = law_firm_para
-        if include_logo:
-            try:
-                if not _validate_image_bytes(logo_bytes):
-                    raise ValueError("Invalid logo bytes")
-                img = Image(io.BytesIO(logo_bytes), width=0.6 * inch, height=0.6 * inch, kind='direct', hAlign='LEFT')
-                img._restrictSize(0.6 * inch, 0.6 * inch)
-                img.alt = "Law Firm Logo"
-                inner_table_data = [[img, law_firm_para]]
-                inner_table = Table(inner_table_data, colWidths=[0.7 * inch, None])
-                inner_table.setStyle(TableStyle([
-                    ('VALIGN', (0, 0), (-1, -1), 'TOP'),
-                    ('LEFTPADDING', (1, 0), (1, 0), 6),
-                ]))
-                header_left_content = inner_table
-            except Exception as e:
-                logging.error(f"Error adding logo to PDF: {e}")
-                st.warning("Could not add logo to PDF. Using text instead.")
-
+def _create_pdf_invoice(df: pd.DataFrame, total_amount: float, invoice_number: str, invoice_date: datetime.date, billing_start_date: datetime.date, billing_end_date: datetime.date, client_id: str, law_firm_id: str, logo_bytes: bytes, include_logo: bool = True) -> io.BytesIO:
+    """Generate a PDF invoice."""
+    buffer = io.BytesIO()
+    doc = SimpleDocTemplate(buffer, pagesize=letter)
+    elements = []
+    styles = getSampleStyleSheet()
+    normal_style = styles['Normal']
+    heading_style = ParagraphStyle(name='Heading', fontSize=12, leading=14, alignment=TA_LEFT)
+    right_align_style = ParagraphStyle(name='RightAlign', fontSize=10, leading=12, alignment=TA_RIGHT)
+    
+    law_firm_info = "Nelson & Murdock, Attorneys at Law<br/>315 W 45th St, New York, NY 10036" if law_firm_id == CONFIG['DEFAULT_LAW_FIRM_ID'] else "Generic Law Firm<br/>123 Main St, Anytown, USA"
+    law_firm_para = Paragraph(law_firm_info, normal_style)
+    header_left_content = law_firm_para
+    if include_logo:
         try:
             if not _validate_image_bytes(logo_bytes):
                 raise ValueError("Invalid logo bytes")
-            img = Image(io.BytesIO(logo_bytes), width=logo_width * inch, height=logo_height * inch, kind='direct', hAlign='LEFT')
-            img._restrictSize(logo_width * inch, logo_height * inch)
+            img = Image(io.BytesIO(logo_bytes), width=0.6 * inch, height=0.6 * inch, kind='direct', hAlign='LEFT')
+            img._restrictSize(0.6 * inch, 0.6 * inch)
+            img.alt = "Law Firm Logo"
             inner_table_data = [[img, law_firm_para]]
-            inner_table = Table(inner_table_data, colWidths=[(logo_width + 0.1) * inch, None])
+            inner_table = Table(inner_table_data, colWidths=[0.7 * inch, None])
             inner_table.setStyle(TableStyle([
                 ('VALIGN', (0, 0), (-1, -1), 'TOP'),
                 ('LEFTPADDING', (1, 0), (1, 0), 6),
@@ -534,132 +483,72 @@ def _create_pdf_invoice(df: pd.DataFrame, total_amount: float, invoice_number: s
         except Exception as e:
             logging.error(f"Error adding logo to PDF: {e}")
             st.warning("Could not add logo to PDF. Using text instead.")
-            header_left_content = law_firm_para
-
-        if client_id == CONFIG['DEFAULT_CLIENT_ID']:
-            client_info = (
-                f"<b>A Onit Inc.</b><br/>{client_id}<br/>"
-                "1360 Post Oak Blvd<br/>Houston, TX 77056"
-            )
-        else:
-            client_info = (
-                f"<b>Your Company Name</b><br/>{client_id}<br/>"
-                "1000 Main Street, Big City, CA 90000"
-            )
-        client_info_style = ParagraphStyle(name="ClientInfoLeft", parent=styles["Normal"], alignment=TA_LEFT)
-        client_para = Paragraph(client_info, client_info_style)
-
-        header_data = [[header_left_content, client_para]]
-        header_table = Table(header_data, colWidths=[available_width / 2, available_width / 2])
-        header_table.setStyle(TableStyle([
-            ('VALIGN', (0, 0), (-1, -1), 'TOP'),
-            ('BOX', (0, 0), (0, 0), 1, colors.black),
-            ('BOX', (1, 0), (1, 0), 1, colors.black),
-            ('LEFTPADDING', (0, 0), (0, 0), 6),
-            ('RIGHTPADDING', (1, 0), (1, 0), 6),
-            ('ALIGN', (0, 0), (0, 0), 'LEFT'),
-            ('ALIGN', (1, 0), (1, 0), 'LEFT'),
-        ]))
-        elements.append(header_table)
-        elements.append(Spacer(1, 0.10 * inch))
-
-        right_style = ParagraphStyle(name="Right", parent=styles["Normal"], alignment=TA_RIGHT)
-        invoice_details_text = (
-            f"<b>Invoice #:</b> {invoice_number}<br/>"
-            f"<b>Invoice Date:</b> {invoice_date.strftime('%Y-%m-%d')}<br/>"
-            f"<b>Billing Period:</b> {billing_start_date.strftime('%Y-%m-%d')} to {billing_end_date.strftime('%Y-%m-%d')}"
-        )
-        details_para = Paragraph(invoice_details_text, right_style)
-        details_table = Table([['', details_para]], colWidths=[available_width / 2, available_width / 2])
-        details_table.setStyle(TableStyle([
-            ('ALIGN', (1, 0), (1, 0), 'RIGHT'),
-            ('VALIGN', (0, 0), (-1, -1), 'TOP'),
-            ('LEFTPADDING', (1, 0), (1, 0), 6),
-        ]))
-        elements.append(details_table)
-        elements.append(Spacer(1, 0.18 * inch))
-
-        data = [['Date', 'Timekeeper', 'Task Code', 'Activity Code', 'Description', 'Hours', 'Rate', 'Total']]
-        for _, row in df.iterrows():
-            date = row['LINE_ITEM_DATE']
-            timekeeper = row['TIMEKEEPER_NAME'] if row['TIMEKEEPER_NAME'] else 'N/A'
-            task_code = row['TASK_CODE'] if row['TASK_CODE'] else 'N/A'
-            activity_code = row['ACTIVITY_CODE'] if row['ACTIVITY_CODE'] else 'N/A'
-            description = row['DESCRIPTION']
-            hours = row['HOURS']
-            rate = row['RATE']
-            total = row['LINE_ITEM_TOTAL']
-            data.append([
-                date,
-                timekeeper,
-                task_code,
-                activity_code,
-                Paragraph(description, styles['Normal']),
-                f"{hours:.2f}",
-                f"${rate:.2f}",
-                f"${total:.2f}"
-            ])
-
-        table = Table(data, colWidths=[1 * inch, 1.25 * inch, 0.75 * inch, 0.75 * inch, 2.25 * inch, 0.75 * inch, 0.75 * inch, 0.75 * inch])
-        table.setStyle(TableStyle([
-            ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
-            ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
-            ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
-            ('VALIGN', (0, 0), (-1, -1), 'TOP'),
-            ('GRID', (0, 0), (-1, -1), 1, colors.black),
-            ('BOX', (0, 0), (-1, -1), 1, colors.black),
-            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-            ('FONTSIZE', (0, 0), (-1, 0), 8),
-            ('FONTSIZE', (0, 1), (-1, -1), 7),
-            ('LEFTPADDING', (0, 0), (-1, -1), 2),
-            ('RIGHTPADDING', (0, 0), (-1, -1), 2),
-            ('TOPPADDING', (0, 0), (-1, -1), 2),
-            ('BOTTOMPADDING', (0, 0), (-1, -1), 2),
-            ('BACKGROUND', (0, 1), (-1, -1), colors.white),
-        ]))
-        elements.append(table)
-        elements.append(Spacer(1, 0.25 * inch))
-
-        total_table_data = [[
-            Paragraph(f"<b>Total Amount Due:</b>", styles['Normal']),
-            Paragraph(f"<b>${total_amount:.2f}</b>", styles['Normal'])
-        ]]
-        total_table = Table(total_table_data, colWidths=[4 * inch, None])
-        total_table.setStyle(TableStyle([
-            ('LINEBELOW', (0, 0), (-1, -1), 1, colors.black),
-            ('ALIGN', (0, 0), (-1, -1), 'RIGHT'),
-            ('VALIGN', (0, 0), (-1, -1), 'TOP'),
-        ]))
-        elements.append(total_table)
-
-        doc.build(elements)
-    except Exception as e:
-        logging.error(f"PDF generation failed: {e}")
-        st.error("Failed to generate PDF invoice. Please try again.")
+    
+    client_info = f"Client ID: {client_id}<br/>Attn: Billing Department"
+    client_para = Paragraph(client_info, normal_style)
+    invoice_info = f"Invoice #: {invoice_number}<br/>Invoice Date: {invoice_date.strftime('%Y-%m-%d')}<br/>Billing Period: {billing_start_date.strftime('%Y-%m-%d')} to {billing_end_date.strftime('%Y-%m-%d')}"
+    invoice_para = Paragraph(invoice_info, right_align_style)
+    header_data = [[header_left_content, invoice_para]]
+    header_table = Table(header_data, colWidths=[4.5 * inch, 3.5 * inch])
+    header_table.setStyle(TableStyle([
+        ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+    ]))
+    elements.append(header_table)
+    elements.append(Spacer(1, 0.25 * inch))
+    
+    elements.append(Paragraph("Invoice", heading_style))
+    elements.append(Spacer(1, 0.1 * inch))
+    
+    data = [["Date", "Description", "Timekeeper", "Hours/Units", "Rate", "Total"]]
+    for _, row in df.iterrows():
+        date = row["LINE_ITEM_DATE"]
+        description = row["DESCRIPTION"]
+        timekeeper = row["TIMEKEEPER_NAME"] if row["TIMEKEEPER_NAME"] else "N/A"
+        hours = f"{row['HOURS']:.1f}" if not row["EXPENSE_CODE"] else f"{int(row['HOURS'])}"
+        rate = f"${row['RATE']:.2f}" if row["RATE"] else "N/A"
+        total = f"${row['LINE_ITEM_TOTAL']:.2f}"
+        data.append([date, description, timekeeper, hours, rate, total])
+    
+    table = Table(data, colWidths=[1 * inch, 2.5 * inch, 1.5 * inch, 1 * inch, 1 * inch, 1 * inch])
+    table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+        ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, 0), 10),
+        ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+        ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
+        ('GRID', (0, 0), (-1, -1), 1, colors.black),
+    ]))
+    elements.append(table)
+    
+    elements.append(Spacer(1, 0.25 * inch))
+    total_para = Paragraph(f"Total: ${total_amount:.2f}", right_align_style)
+    elements.append(total_para)
+    
+    doc.build(elements)
     buffer.seek(0)
     return buffer
 
 def _customize_email_body(matter_number: str, invoice_number: str) -> Tuple[str, str]:
-    """Return customizable email subject and body."""
-    default_subject = f"LEDES Invoice for {matter_number} (Invoice #{invoice_number})"
-    default_body = f"Please find the attached invoice files for matter {matter_number}.\n\nBest regards,\nYour Law Firm"
-    subject = st.session_state.get('email_subject', default_subject)
-    body = st.session_state.get('email_body', default_body)
+    """Customize email subject and body with matter and invoice number."""
+    subject = st.session_state.get("email_subject", f"LEDES Invoice for {matter_number} (Invoice #{invoice_number})")
+    body = st.session_state.get("email_body", f"Please find the attached invoice files for matter {matter_number}.\n\nBest regards,\nYour Law Firm")
+    subject = subject.format(matter_number=matter_number, invoice_number=invoice_number)
+    body = body.format(matter_number=matter_number, invoice_number=invoice_number)
     return subject, body
 
 def _send_email_with_attachment(recipient_email: str, subject: str, body: str, attachments: List[Tuple[str, bytes]]) -> bool:
-    """Send email with attachments, return True if successful."""
+    """Send email with attachments."""
     try:
         sender_email = st.secrets.email.email_from
         password = st.secrets.email.email_password
     except AttributeError:
-        st.error("Email secrets not found. Please configure .streamlit/secrets.toml with email_from and email_password.")
-        logging.error("Missing email secrets in secrets.toml")
+        st.error("Email credentials not configured in secrets.toml")
         return False
-
+    
     msg = MIMEMultipart()
-    from_name = "Onit Invoice Generation"
-    msg['From'] = f'"{from_name}" <{sender_email}>'
+    msg['From'] = sender_email
     msg['To'] = recipient_email
     msg['Subject'] = subject
 
@@ -715,8 +604,13 @@ sample_custom = pd.DataFrame({
 csv_custom = sample_custom.to_csv(index=False).encode('utf-8')
 st.sidebar.download_button("Download Sample Custom Tasks CSV", csv_custom, "sample_custom_tasks.csv", "text/csv")
 
-# File Upload and Output Options
-with st.expander("File Upload & Output Options"):
+# Dynamic Tabs
+tabs = ["File Upload & Output Options", "Invoice Inputs", "Advanced Settings"]
+if send_email:
+    tabs.append("Email Configuration")
+tab_objects = st.tabs(tabs)
+
+with tab_objects[0]:
     st.markdown("<h3 style='color: #1E1E1E;'>File Upload</h3>", unsafe_allow_html=True)
     uploaded_timekeeper_file = st.file_uploader("Upload Timekeeper CSV (tk_info.csv)", type="csv")
     timekeeper_data = _load_timekeepers(uploaded_timekeeper_file)
@@ -735,13 +629,7 @@ with st.expander("File Upload & Output Options"):
     st.markdown("<h3 style='color: #1E1E1E;'>Output & Delivery Options</h3>", unsafe_allow_html=True)
     send_email = st.checkbox("Send Invoices via Email", value=True)
 
-# Dynamic Tabs
-tabs = ["Invoice Inputs", "Advanced Settings"]
-if send_email:
-    tabs.append("Email Configuration")
-tab_objects = st.tabs(tabs)
-
-with tab_objects[0]:
+with tab_objects[1]:
     st.markdown("<h2 style='color: #1E1E1E;'>Invoice Details</h2>", unsafe_allow_html=True)
     st.markdown("<h3 style='color: #1E1E1E;'>Billing Information</h3>", unsafe_allow_html=True)
     client_id = st.text_input("Client ID:", CONFIG['DEFAULT_CLIENT_ID'], help="Format: XX-XXXXXXX (e.g., 02-4388252)")
@@ -772,7 +660,7 @@ with tab_objects[0]:
         height=150
     )
 
-with tab_objects[1]:
+with tab_objects[2]:
     st.markdown("<h2 style='color: #1E1E1E;'>Generation Settings</h2>", unsafe_allow_html=True)
     spend_agent = st.checkbox("Spend Agent", value=False, help="Ensures selected mandatory line items are included; configure below.")
     
@@ -838,7 +726,7 @@ with tab_objects[1]:
             num_invoices = st.number_input("Number of Invoices to Create:", min_value=1, value=1, step=1, help="Creates N invoices. When 'Multiple Billing Periods' is enabled, one invoice per period.")
 
 if send_email:
-    with tab_objects[2]:
+    with tab_objects[3]:
         st.markdown("<h2 style='color: #1E1E1E;'>Email Configuration</h2>", unsafe_allow_html=True)
         recipient_email = st.text_input("Recipient Email Address:")
         try:
