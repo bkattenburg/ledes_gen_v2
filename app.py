@@ -582,15 +582,6 @@ def update_send_email():
     st.session_state.send_email = st.session_state.send_email_checkbox
     logging.debug(f"Updated st.session_state.send_email to {st.session_state.send_email}")
 
-# Output & Delivery Options (before tabs to ensure state consistency)
-st.markdown("<h3 style='color: #1E1E1E;'>Output & Delivery Options</h3>", unsafe_allow_html=True)
-st.checkbox(
-    "Send Invoices via Email",
-    value=st.session_state.send_email,
-    key="send_email_checkbox",
-    on_change=update_send_email
-)
-
 with st.expander("Help & FAQs"):
     st.markdown("""
     ### FAQs
@@ -602,6 +593,13 @@ with st.expander("Help & FAQs"):
     - **How to use a custom logo?** Upload a valid JPG or PNG image file in the Advanced Settings tab when PDF output is enabled. Only JPEG and PNG formats are supported. Other formats (e.g., GIF, BMP) will be converted to PNG. Maximum file size is 5MB. Ensure the image is not corrupted and displays correctly in an image viewer. If no logo is uploaded, the default logo (assets/nelsonmurdock2.jpg or assets/icon.jpg) or a placeholder will be used.
     - **What if my logo doesn’t appear in the PDF?** Check that the file is a valid JPEG or PNG, not corrupted, and under 5MB. Try re-saving the image using an image editor. If issues persist, enable logging to debug (see Advanced Settings for custom default logo path).
     """)
+    st.markdown("<h3 style='color: #1E1E1E;'>Output & Delivery Options</h3>", unsafe_allow_html=True)
+    st.checkbox(
+        "Send Invoices via Email",
+        value=st.session_state.send_email,
+        key="send_email_checkbox",
+        on_change=update_send_email
+    )
 
 # Sidebar
 st.sidebar.markdown("<h2 style='color: #1E1E1E;'>Quick Links</h2>", unsafe_allow_html=True)
@@ -748,7 +746,7 @@ if st.session_state.send_email:
         recipient_email = st.text_input("Recipient Email Address:")
         try:
             sender_email = st.secrets.email.email_from
-            st.caption(f"Sender Email: {sender_email}")
+            st.caption(f"Sender Email will be from: {sender_email}")
         except AttributeError:
             st.caption("Sender Email: Not configured (check secrets.toml)")
         st.text_input("Email Subject Template:", value=f"LEDES Invoice for {matter_number_base} (Invoice #{{invoice_number}})", key="email_subject")
@@ -810,7 +808,7 @@ if generate_button:
                     task_activity_desc, CONFIG['MAJOR_TASK_CODES'], max_daily_hours, include_block_billed, faker
                 )
                 if spend_agent:
-                    rows = _ensure_mandatory_lines(rows, timekeeper_data, current_invoice_desc, client_id, law_firm_id, current_start_date, current_end_date, selected_items)
+                    rows = _ensure_mandatory_lines(rows, timekeeper_data, current_invoice_desc, client_id, law_firm_id, current_start_date,梦 current_end_date, selected_items)
                 
                 df_invoice = pd.DataFrame(rows)
                 current_invoice_number = f"{invoice_number_base}-{i+1}"
