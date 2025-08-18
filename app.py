@@ -452,7 +452,7 @@ def _get_logo_bytes(uploaded_logo: Optional[Any], law_firm_id: str) -> bytes:
     buf.seek(0)
     return buf.getvalue()
 
-def _create_pdf_invoice(df: pd.DataFrame, total_amount: float, invoice_number: str, invoice_date: datetime.date, billing_start_date: datetime.date, billing_end_date: datetime.date, client_id: str, law_firm_id: str, logo_bytes: bytes, include_logo: bool = True, matter_number: str) -> io.BytesIO:
+def _create_pdf_invoice(df: pd.DataFrame, total_amount: float, invoice_number: str, invoice_date: datetime.date, billing_start_date: datetime.date, billing_end_date: datetime.date, client_id: str, law_firm_id: str, logo_bytes: bytes, matter_number: str, include_logo: bool = True) -> io.BytesIO:
     """Generate a PDF invoice matching the provided format."""
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(buffer, pagesize=letter)
