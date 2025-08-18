@@ -604,6 +604,9 @@ sample_custom = pd.DataFrame({
 csv_custom = sample_custom.to_csv(index=False).encode('utf-8')
 st.sidebar.download_button("Download Sample Custom Tasks CSV", csv_custom, "sample_custom_tasks.csv", "text/csv")
 
+# Initialize send_email before tabs
+send_email = False  # Default value
+
 # Dynamic Tabs
 tabs = ["File Upload & Output Options", "Invoice Inputs", "Advanced Settings"]
 if send_email:
