@@ -525,7 +525,7 @@ def _create_pdf_invoice(df: pd.DataFrame, total_amount: float, invoice_number: s
             header_left_content = law_firm_para
 
     header_data = [[header_left_content, client_para]]
-    header_table = Table(header_data, colWidths=[4 * inch, 4 * inch])
+    header_table = Table(header_data, colWidths=[3.5 * inch, 4.0 * inch])
     header_table.setStyle(TableStyle([
         ('VALIGN', (0, 0), (-1, -1), 'TOP'),
         ('LEFTPADDING', (0, 0), (0, 0), 0),
@@ -551,8 +551,8 @@ def _create_pdf_invoice(df: pd.DataFrame, total_amount: float, invoice_number: s
     data = [
         [
             Paragraph("Date", table_header_style), 
-            Paragraph("Task Code", table_header_style), 
-            Paragraph("Activity Code", table_header_style), 
+            Paragraph("Task<br/>Code", table_header_style), 
+            Paragraph("Activity<br/>Code", table_header_style), 
             Paragraph("Timekeeper", table_header_style), 
             Paragraph("Description", table_header_style), 
             Paragraph("Hours", table_header_style), 
@@ -571,7 +571,7 @@ def _create_pdf_invoice(df: pd.DataFrame, total_amount: float, invoice_number: s
         total = f"${row['LINE_ITEM_TOTAL']:.2f}"
         data.append([date, task_code, activity_code, timekeeper, description, hours, rate, total])
 
-    table = Table(data, colWidths=[0.8 * inch, 0.7 * inch, 0.7 * inch, 1.2 * inch, 1.8 * inch, 0.8 * inch, 0.8 * inch, 0.8 * inch])
+    table = Table(data, colWidths=[0.8 * inch, 0.7 * inch, 0.7 * inch, 1.3 * inch, 1.8 * inch, 0.8 * inch, 0.8 * inch, 0.8 * inch])
     table.setStyle(TableStyle([
         ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
         ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
