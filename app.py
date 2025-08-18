@@ -577,9 +577,19 @@ st.markdown("Generate and optionally email LEDES and PDF invoices.", unsafe_allo
 if "send_email" not in st.session_state:
     st.session_state.send_email = False
 
-# Output & Delivery Options (moved before tabs to ensure state consistency)
+# Callback for updating send_email state
+def update_send_email():
+    st.session_state.send_email = st.session_state.send_email_checkbox
+    logging.debug(f"Updated st.session_state.send_email to {st.session_state.send_email}")
+
+# Output & Delivery Options (before tabs to ensure state consistency)
 st.markdown("<h3 style='color: #1E1E1E;'>Output & Delivery Options</h3>", unsafe_allow_html=True)
-st.session_state.send_email = st.checkbox("Send Invoices via Email", value=st.session_state.send_email, key="send_email")
+st.checkbox(
+    "Send Invoices via Email",
+    value=st.session_state.send_email,
+    key="send_email_checkbox",
+    on_change=update_send_email
+)
 
 with st.expander("Help & FAQs"):
     st.markdown("""
