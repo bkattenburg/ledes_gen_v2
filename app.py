@@ -573,6 +573,14 @@ def _send_email_with_attachment(recipient_email: str, subject: str, body: str, a
 st.markdown("<h1 style='color: #1E1E1E;'>LEDES Invoice Generator</h1>", unsafe_allow_html=True)
 st.markdown("Generate and optionally email LEDES and PDF invoices.", unsafe_allow_html=True)
 
+# Initialize send_email in session state
+if "send_email" not in st.session_state:
+    st.session_state.send_email = False
+
+# Output & Delivery Options (moved before tabs to ensure state consistency)
+st.markdown("<h3 style='color: #1E1E1E;'>Output & Delivery Options</h3>", unsafe_allow_html=True)
+st.session_state.send_email = st.checkbox("Send Invoices via Email", value=st.session_state.send_email, key="send_email")
+
 with st.expander("Help & FAQs"):
     st.markdown("""
     ### FAQs
@@ -604,12 +612,8 @@ sample_custom = pd.DataFrame({
 csv_custom = sample_custom.to_csv(index=False).encode('utf-8')
 st.sidebar.download_button("Download Sample Custom Tasks CSV", csv_custom, "sample_custom_tasks.csv", "text/csv")
 
-# Initialize send_email in session state
-if "send_email" not in st.session_state:
-    st.session_state.send_email = False
-
 # Dynamic Tabs
-tabs = ["File Upload & Output Options", "Invoice Inputs", "Advanced Settings"]
+tabs = ["File Upload", "Invoice Inputs", "Advanced Settings"]
 if st.session_state.send_email:
     tabs.append("Email Configuration")
 tab_objects = st.tabs(tabs)
@@ -629,9 +633,6 @@ with tab_objects[0]:
         custom_tasks_data = _load_custom_task_activity_data(uploaded_custom_tasks_file)
         if custom_tasks_data:
             task_activity_desc = custom_tasks_data
-    
-    st.markdown("<h3 style='color: #1E1E1E;'>Output & Delivery Options</h3>", unsafe_allow_html=True)
-    st.session_state.send_email = st.checkbox("Send Invoices via Email", value=st.session_state.send_email)
 
 with tab_objects[1]:
     st.markdown("<h2 style='color: #1E1E1E;'>Invoice Details</h2>", unsafe_allow_html=True)
