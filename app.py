@@ -454,7 +454,7 @@ def _get_logo_bytes(uploaded_logo: Optional[Any], law_firm_id: str) -> bytes:
     return buf.getvalue()
 
 def _create_pdf_invoice(df: pd.DataFrame, total_amount: float, invoice_number: str, invoice_date: datetime.date, billing_start_date: datetime.date, billing_end_date: datetime.date, client_id: str, law_firm_id: str, logo_bytes: bytes, include_logo: bool = True) -> io.BytesIO:
-    """Generate a PDF invoice matching the provided format with side-by-side header."""
+    """Generate a PDF invoice matching the provided format."""
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(buffer, pagesize=letter)
     elements = []
@@ -464,11 +464,11 @@ def _create_pdf_invoice(df: pd.DataFrame, total_amount: float, invoice_number: s
     right_align_style = ParagraphStyle(name='RightAlign', fontSize=10, leading=12, alignment=TA_RIGHT)
     wrap_style = ParagraphStyle(name='Wrap', fontSize=10, leading=12, wordWrap='CJK', alignment=TA_LEFT)
 
-    # Header with Law Firm on left and Client on right, side by side
-    law_firm_info = f"{law_firm_id}<br/>{'Nelson & Murdock, Attorneys at Law' if law_firm_id == CONFIG['DEFAULT_LAW_FIRM_ID'] else 'Generic Law Firm'}<br/>One Park Avenue<br/>Manhattan, NY 10003"
+    # Header with Law Firm on left and Client on right
+    law_firm_info = f"Nelson and Murdock<br/>{law_firm_id}<br/>One Park Avenue<br/>Manhattan, NY 10003"
     law_firm_para = Paragraph(law_firm_info, normal_style)
-    client_info = f"{client_id}<br/>A Onit Inc.<br/>1360 Post Oak Blvd<br/>Houston, TX 77056"
-    client_para = Paragraph(client_info, normal_style)
+    client_info = f"A Onit Inc.<br/>{client_id}<br/>1360 Post Oak Blvd<br/>Houston, TX 77056"
+    client_para = Paragraph(client_info, right_align_style)
     header_left_content = law_firm_para if not include_logo else None
     if include_logo:
         try:
@@ -505,7 +505,7 @@ def _create_pdf_invoice(df: pd.DataFrame, total_amount: float, invoice_number: s
     elements.append(Spacer(1, 0.1 * inch))
 
     # Table with updated columns and wrapped text
-    data = [["Date", "Timekeeper", "Task Code", "Activity Code", "Description", "Hours/Units", "Rate", "Total"]]
+    data = [["Date", "Timekeeper", "Task Code", "Activity Code", "Description", "Hours", "Rate", "Total"]]
     for _, row in df.iterrows():
         date = row["LINE_ITEM_DATE"]
         timekeeper = row["TIMEKEEPER_NAME"] if row["TIMEKEEPER_NAME"] else "N/A"
@@ -817,15 +817,9 @@ if generate_button:
                     current_invoice_desc, current_start_date, current_end_date,
                     task_activity_desc, CONFIG['MAJOR_TASK_CODES'], max_daily_hours, include_block_billed, faker
                 )
-                actual_fee_count = sum(1 for row in rows if not row.get("EXPENSE_CODE"))
-                actual_expense_count = sum(1 for row in rows if row.get("EXPENSE_CODE"))
                 if spend_agent:
                     rows = _ensure_mandatory_lines(rows, timekeeper_data, current_invoice_desc, client_id, law_firm_id, current_start_date, current_end_date, selected_items)
                 
-                if actual_fee_count < fees_used or actual_expense_count < expenses_used:
-                    shortfall_msg = "The number of generated line items is less than requested. This may be due to daily hour limits per timekeeper or random generation constraints. Please adjust the 'Max Daily Timekeeper Hours' or reduce the requested number of line items."
-                    st.warning(shortfall_msg)
-
                 df_invoice = pd.DataFrame(rows)
                 current_invoice_number = f"{invoice_number_base}-{i+1}"
                 current_matter_number = matter_number_base
@@ -851,3 +845,36 @@ if generate_button:
                                 data=data,
                                 file_name=filename,
                                 mime="text/plain" if filename.endswith(".txt") else "application/pdf",
+                                key=f"download_{filename}_{i}"
+                            )
+                else:
+                    attachments_list.extend(attachments_to_send)
+                
+                if multiple_periods:
+                    billing_end_date = current_start_date - datetime.timedelta(days=1)
+                    billing_start_date = billing_end_date.replace(day=1)
+            
+            if not st.session_state.send_email and num_invoices > 1:
+                zip_buf = io.BytesIO()
+                with zipfile.ZipFile(zip_buf, 'w', zipfile.ZIP_DEFLATED) as zip_file:
+                    for filename, data in attachments_list:
+                        zip_file.writestr(filename, data)
+                zip_buf.seek(0)
+                st.download_button(
+                    label="Download All Invoices as ZIP",
+                    data=zip_buf.getvalue(),
+                    file_name="invoices.zip",
+                    mime="application/zip",
+                    key="download_zip"
+                )
+            elif not st.session_state.send_email:
+                st.subheader("Generated Invoice(s)")
+                for filename, data in attachments_list:
+                    st.download_button(
+                        label=f"Download {filename}",
+                        data=data,
+                        file_name=filename,
+                        mime="text/plain" if filename.endswith(".txt") else "application/pdf",
+                        key=f"download_{filename}"
+                    )
+            status.update(label="Invoice generation complete!", state="complete")
