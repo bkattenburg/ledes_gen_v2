@@ -650,13 +650,6 @@ if "send_email" not in st.session_state:
 if "email_single_file" not in st.session_state:
     st.session_state.email_single_file = False
 
-# Callbacks for updating session state
-def update_send_email():
-    st.session_state.send_email = st.session_state.send_email_checkbox
-
-def update_email_single_file():
-    st.session_state.email_single_file = st.session_state.email_single_file_checkbox
-
 with st.expander("Help & FAQs"):
     st.markdown("""
     ### FAQs
@@ -672,9 +665,7 @@ with st.expander("Help & FAQs"):
 st.markdown("<h3 style='color: #1E1E1E;'>Output & Delivery Options</h3>", unsafe_allow_html=True)
 st.checkbox(
     "Send Invoices via Email",
-    value=st.session_state.send_email,
-    key="send_email_checkbox",
-    on_change=update_send_email
+    key="send_email",
 )
 
 # Sidebar
@@ -698,7 +689,7 @@ st.sidebar.download_button("Download Sample Custom Tasks CSV", csv_custom, "samp
 
 # Dynamic Tabs
 tabs = ["File Upload", "Invoice Inputs", "Advanced Settings"]
-if st.session_state.send_email:
+if st.session_state.get("send_email", False):
     tabs.append("Email Configuration")
 tab_objects = st.tabs(tabs)
 
@@ -815,16 +806,14 @@ with tab_objects[2]:
             num_invoices = st.number_input("Number of Invoices to Create:", min_value=1, value=1, step=1, help="Creates N invoices. When 'Multiple Billing Periods' is enabled, one invoice per period.")
 
 # Email Configuration Tab (only created if send_email is True)
-if st.session_state.send_email:
+if st.session_state.get("send_email", False):
     email_tab_index = len(tabs) - 1  # Index of Email Configuration tab
     with tab_objects[email_tab_index]:
         st.markdown("<h2 style='color: #1E1E1E;'>Email Configuration</h2>", unsafe_allow_html=True)
         recipient_email = st.text_input("Recipient Email Address:")
         st.checkbox(
             "Email as a Single Combined LEDES File",
-            value=st.session_state.email_single_file,
-            key="email_single_file_checkbox",
-            on_change=update_email_single_file,
+            key="email_single_file",
             help="When checked, all generated LEDES invoices will be combined into a single file and attached to one email."
         )
         try:
@@ -851,7 +840,7 @@ if not _is_valid_client_id(client_id):
 if not _is_valid_law_firm_id(law_firm_id):
     st.error("Law Firm ID must be in format XX-XXXXXXX (e.g., 02-1234567).")
     is_valid_input = False
-if st.session_state.send_email and not recipient_email:
+if st.session_state.get("send_email", False) and not recipient_email:
     st.error("Please provide a recipient email address.")
     is_valid_input = False
 
@@ -910,7 +899,7 @@ if generate_button:
                     pdf_filename = f"Invoice_{current_invoice_number}.pdf"
                     attachments_to_send.append((pdf_filename, pdf_buffer.getvalue()))
                 
-                if st.session_state.send_email and not st.session_state.email_single_file:
+                if st.session_state.get("send_email", False) and not st.session_state.get("email_single_file", False):
                     subject, body = _customize_email_body(current_matter_number, current_invoice_number)
                     if not _send_email_with_attachment(recipient_email, subject, body, attachments_to_send):
                         st.subheader(f"Invoice {i + 1} (Failed to Email)")
@@ -929,7 +918,7 @@ if generate_button:
                     billing_end_date = current_start_date - datetime.timedelta(days=1)
                     billing_start_date = billing_end_date.replace(day=1)
 
-            if st.session_state.send_email and st.session_state.email_single_file:
+            if st.session_state.get("send_email", False) and st.session_state.get("email_single_file", False):
                 combined_ledes_content = "\n".join(ledes_files_content)
                 single_ledes_filename = f"LEDES_1998B_Combined_{num_invoices}_invoices.txt"
                 single_ledes_attachment = (single_ledes_filename, combined_ledes_content.encode('utf-8'))
@@ -951,7 +940,7 @@ if generate_button:
                             mime="text/plain" if filename.endswith(".txt") else "application/pdf",
                             key=f"download_email_failed_{filename}"
                         )
-            elif not st.session_state.send_email and num_invoices > 1:
+            elif not st.session_state.get("send_email", False) and num_invoices > 1:
                 zip_buf = io.BytesIO()
                 with zipfile.ZipFile(zip_buf, 'w', zipfile.ZIP_DEFLATED) as zip_file:
                     for filename, data in attachments_list:
@@ -964,7 +953,7 @@ if generate_button:
                     mime="application/zip",
                     key="download_zip"
                 )
-            elif not st.session_state.send_email:
+            elif not st.session_state.get("send_email", False):
                 st.subheader("Generated Invoice(s)")
                 for filename, data in attachments_list:
                     st.download_button(
