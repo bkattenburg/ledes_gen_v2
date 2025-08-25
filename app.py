@@ -358,10 +358,13 @@ def _generate_invoice_data(fee_count: int, expense_count: int, timekeeper_data: 
     rows.extend(_generate_fees(fee_count, timekeeper_data, billing_start_date, billing_end_date, task_activity_desc, major_task_codes, max_hours_per_tk_per_day, faker_instance, client_id, law_firm_id, invoice_desc))
     rows.extend(_generate_expenses(expense_count, billing_start_date, billing_end_date, client_id, law_firm_id, invoice_desc))
     total_amount = sum(float(row["LINE_ITEM_TOTAL"]) for row in rows)
+
+    # Filter for fees only before creating block billed items
+    fee_rows = [row for row in rows if not row.get("EXPENSE_CODE")]
     
-    if include_block_billed and rows:
+    if include_block_billed and fee_rows:
         block_size = random.randint(2, 5)
-        selected_rows = random.sample(rows, min(block_size, len(rows)))
+        selected_rows = random.sample(fee_rows, min(block_size, len(fee_rows)))
         total_hours = sum(float(row["HOURS"]) for row in selected_rows)
         total_amount_block = sum(float(row["LINE_ITEM_TOTAL"]) for row in selected_rows)
         descriptions = [row["DESCRIPTION"] for row in selected_rows]
@@ -378,7 +381,7 @@ def _generate_invoice_data(fee_count: int, expense_count: int, timekeeper_data: 
         rows = [row for row in rows if row not in selected_rows]
         rows.append(block_row)
         total_amount = sum(float(row["LINE_ITEM_TOTAL"]) for row in rows)
-    
+
     return rows, total_amount
 
 def _ensure_mandatory_lines(rows: List[Dict], timekeeper_data: List[Dict], invoice_desc: str, client_id: str, law_firm_id: str, billing_start_date: datetime.date, billing_end_date: datetime.date, selected_items: List[str]) -> List[Dict]:
@@ -878,13 +881,14 @@ if generate_button:
         attachments_list = []
         combined_ledes_content = ""
         with st.status("Generating invoices...") as status:
-            for i in range(num_invoices):
-                current_start_date = billing_start_date
-                current_end_date = billing_end_date
-                if multiple_periods:
-                    current_end_date = billing_end_date - datetime.timedelta(days=i * 30)
+        for i in range(num_invoices):
+            if multiple_periods:
+                # Correctly move back one month at a time
+                if i > 0:
+                    current_end_date = current_start_date - datetime.timedelta(days=1)
                     current_start_date = current_end_date.replace(day=1)
-                status.update(label=f"Generating Invoice {i+1}/{num_invoices} for period {current_start_date} to {current_end_date}")
+                
+            status.update(label=f"Generating Invoice {i+1}/{num_invoices} for period {current_start_date} to {current_end_date}")
                 
                 current_invoice_desc = descriptions[i] if multiple_periods and i < len(descriptions) else descriptions[0]
                 fees_used = max(0, fees - (2 if spend_agent and selected_items else 0))
