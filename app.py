@@ -245,7 +245,7 @@ def _create_ledes_line_1998b(row: Dict, line_no: int, inv_total: float, bill_sta
         logging.error(f"Error creating LEDES line: {e}")
         return []
 
-def _create_ledes_1998b_content(rows: List[Dict], inv_total: float, bill_start: datetime.date, bill_end: datetime.date, invoice_number: str, matter_number: str, include_header: bool = True) -> str:
+def _create_ledes_1998b_content(rows: List[Dict], inv_total: float, bill_start: datetime.date, bill_end: datetime.date, invoice_number: str, matter_number: str) -> str:
     """Generate LEDES 1998B content from invoice rows."""
     header = "LEDES1998B[]"
     fields = ("INVOICE_DATE|INVOICE_NUMBER|CLIENT_ID|LAW_FIRM_MATTER_ID|INVOICE_TOTAL|BILLING_START_DATE|"
@@ -254,9 +254,7 @@ def _create_ledes_1998b_content(rows: List[Dict], inv_total: float, bill_start: 
               "LINE_ITEM_TASK_CODE|LINE_ITEM_EXPENSE_CODE|LINE_ITEM_ACTIVITY_CODE|TIMEKEEPER_ID|"
               "LINE_ITEM_DESCRIPTION|LAW_FIRM_ID|LINE_ITEM_UNIT_COST|TIMEKEEPER_NAME|"
               "TIMEKEEPER_CLASSIFICATION|CLIENT_MATTER_ID[]")
-    lines = []
-    if include_header:
-        lines.extend([header, fields])
+    lines = [header, fields]
     for i, row in enumerate(rows, start=1):
         line = _create_ledes_line_1998b(row, i, inv_total, bill_start, bill_end, invoice_number, matter_number)
         if line:
@@ -649,8 +647,6 @@ st.markdown("Generate and optionally email LEDES and PDF invoices.", unsafe_allo
 # Initialize send_email in session state
 if "send_email" not in st.session_state:
     st.session_state.send_email = False
-if "send_email_checkbox" not in st.session_state:
-    st.session_state.send_email_checkbox = False
 
 # Callback for updating send_email state
 def update_send_email():
@@ -806,9 +802,7 @@ with tab_objects[2]:
     generate_multiple = st.checkbox("Generate Multiple Invoices", help="Create more than one invoice.")
     num_invoices = 1
     multiple_periods = False
-    
     if generate_multiple:
-        single_ledes_file = st.checkbox("Single LEDES File?", value=False, help="Combines all generated LEDES files into a single attachment.")
         multiple_periods = st.checkbox("Multiple Billing Periods", help="Backfills one invoice per prior month from the given end date, newest to oldest.")
         if multiple_periods:
             num_periods = st.number_input("How Many Billing Periods:", min_value=2, max_value=6, value=2, step=1, help="Number of month-long periods to create (overrides Number of Invoices).")
@@ -867,14 +861,10 @@ if generate_button:
         st.warning(f"You have selected to generate {num_invoices} invoices, but provided {len(descriptions)} descriptions. Please provide one description per period.")
     else:
         attachments_list = []
-        all_ledes_content = ""
         with st.status("Generating invoices...") as status:
+            current_end_date = billing_end_date
             for i in range(num_invoices):
-                current_start_date = billing_start_date
-                current_end_date = billing_end_date
-                if multiple_periods:
-                    current_end_date = billing_end_date - datetime.timedelta(days=i * 30)
-                    current_start_date = current_end_date.replace(day=1)
+                current_start_date = current_end_date.replace(day=1)
                 status.update(label=f"Generating Invoice {i+1}/{num_invoices} for period {current_start_date} to {current_end_date}")
                 
                 current_invoice_desc = descriptions[i] if multiple_periods and i < len(descriptions) else descriptions[0]
@@ -892,67 +882,58 @@ if generate_button:
                 df_invoice = pd.DataFrame(rows)
                 current_invoice_number = f"{invoice_number_base}-{i+1}"
                 current_matter_number = matter_number_base
+                ledes_content = _create_ledes_1998b_content(rows, total_amount, current_start_date, current_end_date, current_invoice_number, current_matter_number)
                 
-                # Check for Single LEDES File checkbox
-                if generate_multiple and single_ledes_file:
-                    is_first_invoice = (i == 0)
-                    all_ledes_content += _create_ledes_1998b_content(rows, total_amount, current_start_date, current_end_date, current_invoice_number, current_matter_number, include_header=is_first_invoice)
-                else:
-                    ledes_content = _create_ledes_1998b_content(rows, total_amount, current_start_date, current_end_date, current_invoice_number, current_matter_number)
-                    ledes_filename = f"LEDES_1998B_{current_invoice_number}.txt"
-                    attachments_list.append((ledes_filename, ledes_content.encode('utf-8')))
-
+                attachments_to_send = []
+                ledes_filename = f"LEDES_1998B_{current_invoice_number}.txt"
+                attachments_to_send.append((ledes_filename, ledes_content.encode('utf-8')))
+                
                 if include_pdf:
                     logo_bytes = _get_logo_bytes(uploaded_logo, law_firm_id)
                     pdf_buffer = _create_pdf_invoice(df_invoice, total_amount, current_invoice_number, current_end_date, current_start_date, current_end_date, client_id, law_firm_id, logo_bytes, include_logo)
                     pdf_filename = f"Invoice_{current_invoice_number}.pdf"
-                    attachments_list.append((pdf_filename, pdf_buffer.getvalue()))
+                    attachments_to_send.append((pdf_filename, pdf_buffer.getvalue()))
+                
+                if st.session_state.send_email:
+                    subject, body = _customize_email_body(current_matter_number, current_invoice_number)
+                    if not _send_email_with_attachment(recipient_email, subject, body, attachments_to_send):
+                        st.subheader(f"Invoice {i + 1} (Failed to Email)")
+                        for filename, data in attachments_to_send:
+                            st.download_button(
+                                label=f"Download {filename}",
+                                data=data,
+                                file_name=filename,
+                                mime="text/plain" if filename.endswith(".txt") else "application/pdf",
+                                key=f"download_{filename}_{i}"
+                            )
+                else:
+                    attachments_list.extend(attachments_to_send)
                 
                 if multiple_periods:
-                    billing_end_date = current_start_date - datetime.timedelta(days=1)
-                    billing_start_date = billing_end_date.replace(day=1)
+                    current_end_of_prev_month = current_start_date - datetime.timedelta(days=1)
+                    current_end_date = current_end_of_prev_month
             
-            # Handling single vs multiple LEDES files
-            if generate_multiple and single_ledes_file:
-                single_ledes_filename = f"LEDES_1998B_Combined_{invoice_number_base}.txt"
-                final_attachments = [(single_ledes_filename, all_ledes_content.encode('utf-8'))]
-                final_attachments.extend([att for att in attachments_list if att[0].endswith('.pdf')])
-                attachments_list = final_attachments
-            
-            if st.session_state.send_email:
-                subject, body = _customize_email_body(matter_number_base, invoice_number_base)
-                if not _send_email_with_attachment(recipient_email, subject, body, attachments_list):
-                    st.subheader("Generated Invoice(s) - Email Failed")
+            if not st.session_state.send_email and num_invoices > 1:
+                zip_buf = io.BytesIO()
+                with zipfile.ZipFile(zip_buf, 'w', zipfile.ZIP_DEFLATED) as zip_file:
                     for filename, data in attachments_list:
-                        st.download_button(
-                            label=f"Download {filename}",
-                            data=data,
-                            file_name=filename,
-                            mime="text/plain" if filename.endswith(".txt") else "application/pdf",
-                            key=f"download_{filename}"
-                        )
-            else:
+                        zip_file.writestr(filename, data)
+                zip_buf.seek(0)
+                st.download_button(
+                    label="Download All Invoices as ZIP",
+                    data=zip_buf.getvalue(),
+                    file_name="invoices.zip",
+                    mime="application/zip",
+                    key="download_zip"
+                )
+            elif not st.session_state.send_email:
                 st.subheader("Generated Invoice(s)")
-                if generate_multiple:
-                    zip_buf = io.BytesIO()
-                    with zipfile.ZipFile(zip_buf, 'w', zipfile.ZIP_DEFLATED) as zip_file:
-                        for filename, data in attachments_list:
-                            zip_file.writestr(filename, data)
-                    zip_buf.seek(0)
+                for filename, data in attachments_list:
                     st.download_button(
-                        label="Download All Invoices as ZIP",
-                        data=zip_buf.getvalue(),
-                        file_name="invoices.zip",
-                        mime="application/zip",
-                        key="download_zip"
+                        label=f"Download {filename}",
+                        data=data,
+                        file_name=filename,
+                        mime="text/plain" if filename.endswith(".txt") else "application/pdf",
+                        key=f"download_{filename}"
                     )
-                else:
-                    for filename, data in attachments_list:
-                        st.download_button(
-                            label=f"Download {filename}",
-                            data=data,
-                            file_name=filename,
-                            mime="text/plain" if filename.endswith(".txt") else "application/pdf",
-                            key=f"download_{filename}"
-                        )
             status.update(label="Invoice generation complete!", state="complete")
