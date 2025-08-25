@@ -649,6 +649,8 @@ st.markdown("Generate and optionally email LEDES and PDF invoices.", unsafe_allo
 # Initialize send_email in session state
 if "send_email" not in st.session_state:
     st.session_state.send_email = False
+if "send_email_checkbox" not in st.session_state:
+    st.session_state.send_email_checkbox = False
 
 # Callback for updating send_email state
 def update_send_email():
