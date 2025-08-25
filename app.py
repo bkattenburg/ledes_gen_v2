@@ -885,8 +885,8 @@ if generate_button:
                 if multiple_periods:
                 # Correctly move back one month at a time
                     if i > 0:
-                    current_end_date = current_start_date - datetime.timedelta(days=1)
-                    current_start_date = current_end_date.replace(day=1)
+                        current_end_date = current_start_date - datetime.timedelta(days=1)
+                        current_start_date = current_end_date.replace(day=1)
                 
             status.update(label=f"Generating Invoice {i+1}/{num_invoices} for period {current_start_date} to {current_end_date}")
                 
