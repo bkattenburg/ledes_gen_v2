@@ -881,10 +881,10 @@ if generate_button:
         attachments_list = []
         combined_ledes_content = ""
         with st.status("Generating invoices...") as status:
-        for i in range(num_invoices):
-            if multiple_periods:
+            for i in range(num_invoices):
+                if multiple_periods:
                 # Correctly move back one month at a time
-                if i > 0:
+                    if i > 0:
                     current_end_date = current_start_date - datetime.timedelta(days=1)
                     current_start_date = current_end_date.replace(day=1)
                 
