@@ -606,65 +606,222 @@ def _create_pdf_invoice(df: pd.DataFrame, total_amount: float, invoice_number: s
     buffer.seek(0)
     return buffer
 
+
 def _create_receipt_image(expense_row: dict, faker_instance: Faker) -> Tuple[str, io.BytesIO]:
-    """
-    Generates a simple receipt image as a PNG file in a BytesIO buffer.
-    """
-    width, height = 500, 700
-    background_color = (245, 245, 245)
-    text_color = (0, 0, 0)
-    
+    """Enhanced realistic receipt generator (see chat notes for details)."""
+    width, height = 600, 950
+    bg = (252, 252, 252)
+    fg = (20, 20, 20)
+    faint = (90, 90, 90)
+    line_y_gap = 28
+
+    TAX_MAP = {
+        "E111": 0.085,
+        "E110": 0.000,
+        "E109": 0.000,
+        "E108": 0.000,
+        "E115": 0.085,
+        "E116": 0.085,
+        "E117": 0.085,
+    }
+
+    def money(x):
+        return f"${x:,.2f}"
+
+    def mask_card():
+        brands = ["VISA", "MC", "AMEX", "DISC"]
+        brand = random.choice(brands)
+        if brand == "AMEX":
+            masked = f"{brand} ****-******-*{random.randint(1000,9999)}"
+        else:
+            masked = f"{brand} ****-****-****-{random.randint(1000,9999)}"
+        return masked
+
+    def auth_code():
+        return f"APPROVED  AUTH {random.randint(100000,999999)}  REF {random.randint(1000,9999)}"
+
+    def pick_items(expense_code: str, desc: str, total: float):
+        items = []
+        if expense_code == "E111":
+            qtys = [1, 2]
+            entree_qty = random.choice(qtys)
+            entree_unit = round(total * 0.45 / max(entree_qty,1), 2)
+            drink_unit = round(total * 0.15, 2)
+            items = [
+                ("Entree", entree_qty, entree_unit, round(entree_qty*entree_unit,2)),
+                ("Beverage", 1, drink_unit, drink_unit),
+            ]
+        elif expense_code == "E110":
+            miles = random.randint(3, 20)
+            base = round(max(2.5, total * 0.15), 2)
+            per_mile = round(max(0.9, (total - base) / max(miles,1)), 2)
+            items = [
+                ("Base Fare", 1, base, base),
+                (f"Distance {miles} mi", 1, per_mile*miles, round(per_mile*miles,2)),
+            ]
+        elif expense_code == "E108":
+            weight = random.uniform(0.5, 4.0)
+            unit = round(total, 2)
+            items = [(f"USPS Priority Mail {weight:.1f} lb", 1, unit, unit)]
+        elif expense_code in ("E115","E116"):
+            pages = random.randint(50, 300)
+            unit = round(max(2.0, min(6.0, total/pages)), 2)
+            items = [(f"Transcript ({pages} pages)", pages, unit, round(pages*unit,2))]
+        else:
+            n = random.choice([2,3])
+            remaining = total
+            for i in range(n-1):
+                part = round(total * random.uniform(0.2, 0.5), 2)
+                remaining = round(remaining - part, 2)
+                items.append((f"{desc[:20]} {i+1}", 1, part, part))
+            items.append((f"{desc[:20]} {n}", 1, remaining, remaining))
+        return items
+
+    merchant = faker_instance.company()
+    m_addr = faker_instance.address().replace("\n", ", ")
+    m_phone = faker_instance.phone_number()
+    cashier = faker_instance.first_name()
+
     try:
-        img = PILImage.new("RGB", (width, height), background_color)
-        draw = ImageDraw.Draw(img)
-        
-        try:
-            # Assuming 'arial.ttf' is available in the environment.
-            header_font = ImageFont.truetype("arial.ttf", 30)
-            body_font = ImageFont.truetype("arial.ttf", 20)
-        except IOError:
-            header_font = ImageFont.load_default()
-            body_font = ImageFont.load_default()
-        
-        receipt_title = "Receipt"
-        store_name = faker_instance.company()
-        
-        text_width = draw.textlength(receipt_title, font=header_font)
-        draw.text(((width - text_width) / 2, 50), receipt_title, font=header_font, fill=text_color)
-        
-        text_width = draw.textlength(store_name, font=body_font)
-        draw.text(((width - text_width) / 2, 90), store_name, font=body_font, fill=text_color)
+        line_item_date = datetime.strptime(expense_row["LINE_ITEM_DATE"], "%Y-%m-%d").date()
+    except Exception:
+        line_item_date = datetime.today().date()
+    exp_code = str(expense_row.get("EXPENSE_CODE", "")).strip()
+    desc = str(expense_row.get("DESCRIPTION","")).strip() or "Item"
+    total_amount = float(expense_row.get("LINE_ITEM_TOTAL", 0.0))
 
-        line_item_date = datetime.datetime.strptime(expense_row["LINE_ITEM_DATE"], "%Y-%m-%d").date()
-        draw.text((50, 130), f"Date: {line_item_date.strftime('%B %d, %Y')}", font=body_font, fill=text_color)
-        draw.text((50, 160), f"Receipt #: {random.randint(100000, 999999)}", font=body_font, fill=text_color)
+    items = pick_items(exp_code, desc, total_amount)
+    subtotal = round(sum(x[3] for x in items), 2)
 
-        draw.line([(40, 200), (width - 40, 200)], fill=text_color, width=2)
-        
-        y_pos = 220
-        description = expense_row.get("DESCRIPTION", "N/A")
-        total_amount = expense_row.get("LINE_ITEM_TOTAL", 0.0)
-        
-        draw.text((50, y_pos), f"{description}", font=body_font, fill=text_color)
-        draw.text((width - 150, y_pos), f"${total_amount:.2f}", font=body_font, fill=text_color)
-        y_pos += 30
+    tax_rate = TAX_MAP.get(exp_code, 0.085 if subtotal>0 else 0.0)
+    tax = round(subtotal * tax_rate, 2)
 
-        draw.line([(40, y_pos + 20), (width - 40, y_pos + 20)], fill=text_color, width=2)
-        y_pos += 40
-        draw.text((50, y_pos), "TOTAL:", font=header_font, fill=text_color)
-        draw.text((width - 150, y_pos), f"${total_amount:.2f}", font=header_font, fill=text_color)
+    tip = 0.0
+    if exp_code in ("E111","E110"):
+        target_total = total_amount
+        tip_guess = 0.15 if exp_code=="E111" else 0.10
+        tip = round(subtotal * tip_guess, 2)
+        over = round((subtotal + tax + tip) - target_total, 2)
+        if over > 0:
+            tip = max(0.0, round(tip - over, 2))
+        else:
+            tip = round(tip + abs(over), 2)
 
-        img_buffer = io.BytesIO()
-        img.save(img_buffer, format="PNG")
-        img_buffer.seek(0)
-        
-        filename = f"Receipt_{expense_row['EXPENSE_CODE']}_{line_item_date.strftime('%Y%m%d')}.png"
-        return filename, img_buffer
-    
-    except Exception as e:
-        logging.error(f"Error creating receipt image: {e}")
-        return None, None
+    grand = round(subtotal + tax + tip, 2)
+    drift = round(total_amount - grand, 2)
+    if abs(drift) >= 0.01 and items:
+        name, qty, unit, line_total = items[-1]
+        line_total = round(line_total + drift, 2)
+        unit = round(line_total / max(qty,1), 2)
+        items[-1] = (name, qty, unit, line_total)
+        subtotal = round(sum(x[3] for x in items), 2)
+        grand = round(subtotal + tax + tip, 2)
 
+    img = PILImage.new("RGB", (width, height), bg)
+    draw = ImageDraw.Draw(img)
+
+    try:
+        title_font = ImageFont.truetype("arial.ttf", 34)
+        header_font = ImageFont.truetype("arial.ttf", 22)
+        mono_font = ImageFont.truetype("arial.ttf", 22)
+        small_font = ImageFont.truetype("arial.ttf", 18)
+        tiny_font = ImageFont.truetype("arial.ttf", 15)
+    except Exception:
+        title_font = ImageFont.load_default()
+        header_font = ImageFont.load_default()
+        mono_font = ImageFont.load_default()
+        small_font = ImageFont.load_default()
+        tiny_font = ImageFont.load_default()
+
+    def draw_hr(y, pad_left=40, pad_right=40):
+        draw.line([(pad_left, y), (width - pad_right, y)], fill=faint, width=1)
+
+    y = 30
+    title = "RECEIPT"
+    tw = draw.textlength(title, font=title_font)
+    draw.text(((width - tw) / 2, y), title, font=title_font, fill=fg)
+    y += 42
+
+    for line in (merchant, m_addr, f"Tel: {m_phone}"):
+        draw.text((40, y), line, font=header_font, fill=fg)
+        y += 26
+    y += 6
+    draw_hr(y); y += 14
+
+    rnum = f"{random.randint(100000, 999999)}-{random.randint(10,99)}"
+    draw.text((40, y), f"Date: {line_item_date.strftime('%a %b %d, %Y')}", font=mono_font, fill=fg)
+    draw.text((width-300, y), f"Receipt #: {rnum}", font=mono_font, fill=fg)
+    y += 30
+    draw.text((40, y), f"Cashier: {cashier}", font=mono_font, fill=(90,90,90))
+    y += 10
+    draw_hr(y); y += 16
+
+    draw.text((40, y), "Item", font=small_font, fill=(90,90,90))
+    draw.text((width-255, y), "Qty", font=small_font, fill=(90,90,90))
+    draw.text((width-180, y), "Price", font=small_font, fill=(90,90,90))
+    draw.text((width-95, y), "Total", font=small_font, fill=(90,90,90))
+    y += 22
+
+    import textwrap as _tw
+    for name, qty, unit, line_total in items:
+        lines = _tw.wrap(name, width=32) or ["Item"]
+        first = True
+        for wrap_line in lines:
+            draw.text((40, y), wrap_line, font=mono_font, fill=fg)
+            if first:
+                draw.text((width-245, y), str(qty), font=mono_font, fill=fg)
+                draw.text((width-180, y), money(unit), font=mono_font, fill=fg)
+                draw.text((width-95, y), money(line_total), font=mono_font, fill=fg)
+                first = False
+            y += line_y_gap-8
+        y += 2
+    draw_hr(y); y += 14
+
+    def right_label(label, val):
+        nonlocal y
+        draw.text((width-220, y), label, font=mono_font, fill=fg)
+        draw.text((width-95, y), money(val), font=mono_font, fill=fg)
+        y += 24
+
+    right_label("Subtotal", subtotal)
+    if tax > 0:
+        right_label(f"Tax ({int(tax_rate*100)}%)", tax)
+    if tip > 0:
+        right_label("Tip", tip)
+    draw.text((width-220, y), "TOTAL", font=header_font, fill=fg)
+    draw.text((width-95, y), money(round(subtotal + tax + tip, 2)), font=header_font, fill=fg)
+    y += 30
+    draw_hr(y); y += 14
+
+    pm = mask_card()
+    draw.text((40, y), pm, font=mono_font, fill=fg)
+    y += 26
+    draw.text((40, y), auth_code(), font=mono_font, fill=(90,90,90))
+    y += 10
+    draw_hr(y); y += 14
+
+    policy = "Returns within 30 days with receipt. Items must be unused and in original packaging."
+    for line in _tw.wrap(policy, width=70):
+        draw.text((40, y), line, font=tiny_font, fill=(90,90,90))
+        y += 20
+
+    y = height - 80
+    x = 40
+    random.seed(rnum)
+    for _ in range(60):
+        bar_h = random.randint(20, 50)
+        bar_w = random.choice([1,1,2])
+        draw.rectangle([x, y, x+bar_w, y+bar_h], fill=(90,90,90))
+        x += bar_w + 3
+        if x > width - 40:
+            break
+
+    img_buffer = io.BytesIO()
+    img.save(img_buffer, format="PNG")
+    img_buffer.seek(0)
+
+    filename = f"Receipt_{exp_code}_{line_item_date.strftime('%Y%m%d')}.png"
+    return filename, img_buffer
 def _customize_email_body(matter_number: str, invoice_number: str) -> Tuple[str, str]:
     """Customize email subject and body with matter and invoice number."""
     subject = st.session_state.get("email_subject", f"LEDES Invoice for {matter_number} (Invoice #{invoice_number})")
