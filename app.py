@@ -320,6 +320,7 @@ def _generate_expenses(expense_count: int, billing_start_date: datetime.date, bi
     mileage_rate_cfg = float(st.session_state.get("mileage_rate_e109", 0.65))
     travel_rng = st.session_state.get("travel_range_e110", (100.0, 800.0))
     tel_rng = st.session_state.get("telephone_range_e105", (5.0, 40.0))
+    copying_rate = float(st.session_state.get("copying_rate_e101", 0.24))
     try:
         travel_min, travel_max = float(travel_rng[0]), float(travel_rng[1])
     except Exception:
@@ -336,7 +337,7 @@ def _generate_expenses(expense_count: int, billing_start_date: datetime.date, bi
         description = "Copying"
         expense_code = "E101"
         hours = random.randint(50, 300)  # number of pages
-        rate = round(random.uniform(0.14, 0.25), 2)  # per-page
+        rate = round(copying_rate, 2)  # per-page
         random_day_offset = random.randint(0, num_days - 1)
         line_item_date = billing_start_date + datetime.timedelta(days=random_day_offset)
         line_item_total = round(hours * rate, 2)
@@ -359,7 +360,7 @@ def _generate_expenses(expense_count: int, billing_start_date: datetime.date, bi
         if expense_code == "E109":  # Local travel (mileage)
             miles = random.randint(5, 50)
             hours = miles  # store miles in HOURS
-            rate = mileage_rate_cfg    # mileage rate from UI
+            rate = mileage_rate_cfg    # mileage rate
             line_item_total = round(miles * rate, 2)
         elif expense_code == "E110":  # Out-of-town travel (ticket/transport)
             hours = 1
@@ -1031,14 +1032,6 @@ with tab_objects[2]:
             value=min(20, max_fees),
             format="%d"
         )
-        st.caption("Number of expense line items to generate")
-        expenses = st.slider(
-            "Number of Expense Line Items",
-            min_value=0,
-            max_value=50,
-            value=5,
-            format="%d"
-        )
         st.markdown("<h3 style='color: #1E1E1E;'>Expense Settings</h3>", unsafe_allow_html=True)
         with st.expander("Adjust Expense Amounts", expanded=False):
             st.number_input(
@@ -1059,6 +1052,20 @@ with tab_objects[2]:
                 key="telephone_range_e105",
                 help="Random amount for each E105 line will be drawn from this range."
             )
+            st.slider(
+                "Copying (E101) per-page rate ($)",
+                min_value=0.05, max_value=1.50, value=0.24, step=0.01,
+                key="copying_rate_e101",
+                help="Per-page rate used for E101 Copying expenses."
+            )
+        st.caption("Number of expense line items to generate")
+        expenses = st.slider(
+            "Number of Expense Line Items",
+            min_value=0,
+            max_value=50,
+            value=5,
+            format="%d"
+        )
     max_daily_hours = st.number_input("Max Daily Timekeeper Hours:", min_value=1, max_value=24, value=16, step=1)
     
     if spend_agent:
