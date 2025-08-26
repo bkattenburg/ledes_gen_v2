@@ -309,17 +309,21 @@ def _generate_fees(fee_count: int, timekeeper_data: List[Dict], billing_start_da
         rows.append(row)
     return rows
 
+
+
 def _generate_expenses(expense_count: int, billing_start_date: datetime.date, billing_end_date: datetime.date, client_id: str, law_firm_id: str, invoice_desc: str) -> List[Dict]:
-    """Generate expense line items for an invoice."""
-    rows = []
+    """Generate expense line items for an invoice with realistic amounts."""
+    rows: List[Dict] = []
     delta = billing_end_date - billing_start_date
     num_days = max(1, delta.days + 1)
+
+    # Always include some Copying (E101)
     e101_actual_count = random.randint(1, min(3, expense_count))
     for _ in range(e101_actual_count):
         description = "Copying"
         expense_code = "E101"
-        hours = random.randint(1, 200)
-        rate = round(random.uniform(0.14, 0.25), 2)
+        hours = random.randint(50, 300)  # number of pages
+        rate = round(random.uniform(0.14, 0.25), 2)  # per-page
         random_day_offset = random.randint(0, num_days - 1)
         line_item_date = billing_start_date + datetime.timedelta(days=random_day_offset)
         line_item_total = round(hours * rate, 2)
@@ -331,15 +335,44 @@ def _generate_expenses(expense_count: int, billing_start_date: datetime.date, bi
             "HOURS": hours, "RATE": rate, "LINE_ITEM_TOTAL": line_item_total
         }
         rows.append(row)
-    
-    for _ in range(expense_count - e101_actual_count):
+
+    # Remaining expenses with category-aware amounts
+    for _ in range(max(0, expense_count - e101_actual_count)):
         description = random.choice(OTHER_EXPENSE_DESCRIPTIONS)
         expense_code = CONFIG['EXPENSE_CODES'][description]
-        hours = random.randint(1, 100)
-        rate = round(random.uniform(5.0, 100.0), 2)
         random_day_offset = random.randint(0, num_days - 1)
         line_item_date = billing_start_date + datetime.timedelta(days=random_day_offset)
-        line_item_total = round(hours * rate, 2)
+
+        if expense_code == "E109":  # Local travel (mileage)
+            miles = random.randint(5, 50)
+            hours = miles  # store miles in HOURS
+            rate = 0.65    # mileage rate
+            line_item_total = round(miles * rate, 2)
+        elif expense_code == "E110":  # Out-of-town travel (ticket/transport)
+            hours = 1
+            rate = round(random.uniform(100.0, 800.0), 2)
+            line_item_total = rate
+        elif expense_code == "E105":  # Telephone
+            hours = 1
+            rate = round(random.uniform(5.0, 40.0), 2)
+            line_item_total = rate
+        elif expense_code == "E107":  # Delivery/messenger
+            hours = 1
+            rate = round(random.uniform(20.0, 100.0), 2)
+            line_item_total = rate
+        elif expense_code == "E108":  # Postage
+            hours = 1
+            rate = round(random.uniform(5.0, 50.0), 2)
+            line_item_total = rate
+        elif expense_code == "E111":  # Meals
+            hours = 1
+            rate = round(random.uniform(15.0, 150.0), 2)
+            line_item_total = rate
+        else:
+            hours = random.randint(1, 5)
+            rate = round(random.uniform(10.0, 150.0), 2)
+            line_item_total = round(hours * rate, 2)
+
         row = {
             "INVOICE_DESCRIPTION": invoice_desc, "CLIENT_ID": client_id, "LAW_FIRM_ID": law_firm_id,
             "LINE_ITEM_DATE": line_item_date.strftime("%Y-%m-%d"), "TIMEKEEPER_NAME": "",
@@ -348,6 +381,7 @@ def _generate_expenses(expense_count: int, billing_start_date: datetime.date, bi
             "HOURS": hours, "RATE": rate, "LINE_ITEM_TOTAL": line_item_total
         }
         rows.append(row)
+
     return rows
 
 def _generate_invoice_data(fee_count: int, expense_count: int, timekeeper_data: List[Dict], client_id: str, law_firm_id: str, invoice_desc: str, billing_start_date: datetime.date, billing_end_date: datetime.date, task_activity_desc: List[Tuple[str, str, str]], major_task_codes: set, max_hours_per_tk_per_day: int, include_block_billed: bool, faker_instance: Faker) -> Tuple[List[Dict], float]:
