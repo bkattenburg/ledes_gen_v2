@@ -1141,7 +1141,7 @@ if generate_button:
                 
                 if generate_receipts:
                     for row in rows:
-                        if row.get("EXPENSE_CODE"):
+                        if row.get("EXPENSE_CODE") and row.get("EXPENSE_CODE") != "E101":  # Exclude Copying (E101)
                             receipt_filename, receipt_data_buf = _create_receipt_image(row, faker)
                             if receipt_data_buf:
                                 attachments_list.append((receipt_filename, receipt_data_buf.getvalue()))
