@@ -1039,6 +1039,26 @@ with tab_objects[2]:
             value=5,
             format="%d"
         )
+        st.markdown("<h3 style='color: #1E1E1E;'>Expense Settings</h3>", unsafe_allow_html=True)
+        with st.expander("Adjust Expense Amounts", expanded=False):
+            st.number_input(
+                "Local Travel (E109) mileage rate ($/mile)",
+                min_value=0.20, max_value=2.00, value=0.65, step=0.01,
+                key="mileage_rate_e109",
+                help="Used to calculate E109 totals as miles × rate. Miles are stored in the HOURS column."
+            )
+            st.slider(
+                "Out-of-town Travel (E110) amount range ($)",
+                min_value=10.0, max_value=2000.0, value=(100.0, 800.0), step=10.0,
+                key="travel_range_e110",
+                help="Random amount for each E110 line will be drawn from this range."
+            )
+            st.slider(
+                "Telephone (E105) amount range ($)",
+                min_value=1.0, max_value=150.0, value=(5.0, 40.0), step=1.0,
+                key="telephone_range_e105",
+                help="Random amount for each E105 line will be drawn from this range."
+            )
     max_daily_hours = st.number_input("Max Daily Timekeeper Hours:", min_value=1, max_value=24, value=16, step=1)
     
     if spend_agent:
