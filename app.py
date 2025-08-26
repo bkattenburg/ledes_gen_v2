@@ -848,7 +848,7 @@ def _create_receipt_image(expense_row: dict, faker_instance: Faker) -> Tuple[str
     y += 10
     draw_hr(y); y += 14
 
-    policy = "Returns within 30 days with receipt. Items must be unused and in original packaging."
+    policy = "Thank you for your business."
     for line in _tw.wrap(policy, width=70):
         draw.text((40, y), line, font=tiny_font, fill=(90,90,90))
         y += 20
