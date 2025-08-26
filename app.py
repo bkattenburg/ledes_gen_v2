@@ -683,9 +683,9 @@ def _create_receipt_image(expense_row: dict, faker_instance: Faker) -> Tuple[str
     cashier = faker_instance.first_name()
 
     try:
-        line_item_date = datetime.strptime(expense_row["LINE_ITEM_DATE"], "%Y-%m-%d").date()
+        line_item_date = datetime.datetime.strptime(expense_row["LINE_ITEM_DATE"], "%Y-%m-%d").date()
     except Exception:
-        line_item_date = datetime.today().date()
+        line_item_date = datetime.datetime.today().date()
     exp_code = str(expense_row.get("EXPENSE_CODE", "")).strip()
     desc = str(expense_row.get("DESCRIPTION","")).strip() or "Item"
     total_amount = float(expense_row.get("LINE_ITEM_TOTAL", 0.0))
