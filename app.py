@@ -324,6 +324,20 @@ def _generate_expenses(expense_count: int, billing_start_date: datetime.date, bi
     rows: List[Dict] = []
     delta = billing_end_date - billing_start_date
     num_days = max(1, delta.days + 1)
+    # Read tunable expense settings from UI
+    mileage_rate_cfg = float(st.session_state.get("mileage_rate_e109", 0.65))
+    travel_rng = st.session_state.get("travel_range_e110", (100.0, 800.0))
+    tel_rng = st.session_state.get("telephone_range_e105", (5.0, 40.0))
+    copying_rate = float(st.session_state.get("copying_rate_e101", 0.24))
+    try:
+        travel_min, travel_max = float(travel_rng[0]), float(travel_rng[1])
+    except Exception:
+        travel_min, travel_max = 100.0, 800.0
+    try:
+        tel_min, tel_max = float(tel_rng[0]), float(tel_rng[1])
+    except Exception:
+        tel_min, tel_max = 5.0, 40.0
+
 
     # Always include some Copying (E101)
     e101_actual_count = random.randint(1, min(3, expense_count))
@@ -331,7 +345,7 @@ def _generate_expenses(expense_count: int, billing_start_date: datetime.date, bi
         description = "Copying"
         expense_code = "E101"
         hours = random.randint(50, 300)  # number of pages
-        rate = round(random.uniform(0.14, 0.25), 2)  # per-page
+        rate = round(copying_rate, 2)  # per-page
         random_day_offset = random.randint(0, num_days - 1)
         line_item_date = billing_start_date + datetime.timedelta(days=random_day_offset)
         line_item_total = round(hours * rate, 2)
@@ -357,15 +371,15 @@ def _generate_expenses(expense_count: int, billing_start_date: datetime.date, bi
         if expense_code == "E109":  # Local travel (mileage)
             miles = random.randint(5, 50)
             hours = miles  # store miles in HOURS
-            rate = 0.65    # mileage rate
+            rate = mileage_rate_cfg  # mileage rate from UI
             line_item_total = round(miles * rate, 2)
         elif expense_code == "E110":  # Out-of-town travel (ticket/transport)
             hours = 1
-            rate = round(random.uniform(100.0, 800.0), 2)
+            rate = round(random.uniform(travel_min, travel_max), 2)
             line_item_total = rate
         elif expense_code == "E105":  # Telephone
             hours = 1
-            rate = round(random.uniform(5.0, 40.0), 2)
+            rate = round(random.uniform(tel_min, tel_max), 2)
             line_item_total = rate
         elif expense_code == "E107":  # Delivery/messenger
             hours = 1
@@ -676,6 +690,39 @@ def _create_receipt_image(expense_row: dict, faker_instance: Faker) -> Tuple[str
     fg = (20, 20, 20)
     faint = (90, 90, 90)
     line_y_gap = 28
+    # Settings from UI (with defaults if not present)
+    try:
+        import streamlit as st
+    except Exception:
+        st = None
+    rcpt_scale = (st.session_state.get("rcpt_scale", 1.0) if st else 1.0)
+    rcpt_line_weight = int(st.session_state.get("rcpt_line_weight", 1)) if st else 1
+    rcpt_dashed = bool(st.session_state.get("rcpt_dashed", False)) if st else False
+
+    show_policy_map = {
+        "travel": bool(st.session_state.get("rcpt_show_policy_travel", True)) if st else True,
+        "meal": bool(st.session_state.get("rcpt_show_policy_meal", True)) if st else True,
+        "mileage": bool(st.session_state.get("rcpt_show_policy_mileage", True)) if st else True,
+        "supplies": bool(st.session_state.get("rcpt_show_policy_supplies", True)) if st else True,
+        "generic": bool(st.session_state.get("rcpt_show_policy_generic", True)) if st else True,
+    }
+
+    travel_overrides = {
+        "carrier": (st.session_state.get("rcpt_travel_carrier", "") if st else ""),
+        "flight": (st.session_state.get("rcpt_travel_flight", "") if st else ""),
+        "seat": (st.session_state.get("rcpt_travel_seat", "") if st else ""),
+        "fare": (st.session_state.get("rcpt_travel_fare", "") if st else ""),
+        "from": (st.session_state.get("rcpt_travel_from", "") if st else ""),
+        "to": (st.session_state.get("rcpt_travel_to", "") if st else ""),
+        "autogen": bool(st.session_state.get("rcpt_travel_autogen", True)) if st else True,
+    }
+
+    meal_overrides = {
+        "table": (st.session_state.get("rcpt_meal_table", "") if st else ""),
+        "server": (st.session_state.get("rcpt_meal_server", "") if st else ""),
+        "show_cashier": bool(st.session_state.get("rcpt_meal_show_cashier", True)) if st else True,
+    }
+
 
     TAX_MAP = {
         "E111": 0.085,
@@ -689,6 +736,37 @@ def _create_receipt_image(expense_row: dict, faker_instance: Faker) -> Tuple[str
     }
 
     def money(x):
+        return f"${x:,.2f}"
+
+    def policy_lines(template):
+        if template == "travel":
+            return [
+                "Non-refundable ticket; changes may incur fees.",
+                "Carrier rules and fare conditions apply.",
+                "For reimbursement purposes; not a boarding pass."
+            ]
+        if template == "meal":
+            return [
+                "Thank you for dining with us.",
+                "A service charge may apply to large parties.",
+                "Keep this receipt for your records."
+            ]
+        if template == "mileage":
+            return [
+                "Mileage reimbursed at configured rate.",
+                "Trip details available upon request."
+            ]
+        if template == "supplies":
+            return [
+                "Returns subject to store policy and condition.",
+                "Warranty claims handled by manufacturer."
+            ]
+        return ["Keep this receipt for your records."]
+
+    def uniq_suffix():
+        import random as _r
+        return f"-{_r.randint(1000,9999)}"
+
         return f"${x:,.2f}"
 
     def mask_card():
@@ -799,11 +877,11 @@ def _create_receipt_image(expense_row: dict, faker_instance: Faker) -> Tuple[str
     draw = ImageDraw.Draw(img)
 
     try:
-        title_font = ImageFont.truetype("arial.ttf", 34)
-        header_font = ImageFont.truetype("arial.ttf", 22)
-        mono_font = ImageFont.truetype("arial.ttf", 22)
-        small_font = ImageFont.truetype("arial.ttf", 18)
-        tiny_font = ImageFont.truetype("arial.ttf", 15)
+        title_font = ImageFont.truetype("arial.ttf", max(12, int(34*rcpt_scale)))
+        header_font = ImageFont.truetype("arial.ttf", max(10, int(22*rcpt_scale)))
+        mono_font = ImageFont.truetype("arial.ttf", max(10, int(22*rcpt_scale)))
+        small_font = ImageFont.truetype("arial.ttf", max(8, int(18*rcpt_scale)))
+        tiny_font = ImageFont.truetype("arial.ttf", max(8, int(15*rcpt_scale)))
     except Exception:
         title_font = ImageFont.load_default()
         header_font = ImageFont.load_default()
@@ -811,38 +889,60 @@ def _create_receipt_image(expense_row: dict, faker_instance: Faker) -> Tuple[str
         small_font = ImageFont.load_default()
         tiny_font = ImageFont.load_default()
 
-    def draw_hr(y, pad_left=40, pad_right=40):
-        draw.line([(pad_left, y), (width - pad_right, y)], fill=faint, width=1)
-
-    y = 30
-    title = "TRAVEL RECEIPT" if template=="travel" else "RECEIPT"
-    tw = draw.textlength(title, font=title_font)
-    draw.text(((width - tw) / 2, y), title, font=title_font, fill=fg)
+        def draw_hr(draw, y, pad_left=40, pad_right=40, weight=1, dashed=False):
+            if dashed:
+                x = pad_left
+                dash = 8
+                gap = 6
+                while x < width - pad_right:
+                    x2 = min(x + dash, width - pad_right)
+                    draw.line([(x, y), (x2, y)], fill=faint, width=weight)
+                    x = x2 + gap
+            else:
+                draw.line([(pad_left, y), (width - pad_right, y)], fill=faint, width=weight)
     y += 42
 
     for line in (merchant, m_addr, f"Tel: {m_phone}"):
         draw.text((40, y), line, font=header_font, fill=fg)
         y += 26
     y += 6
-    draw_hr(y); y += 14
+    draw_hr(draw, y, weight=rcpt_line_weight, dashed=rcpt_dashed); y += 14
 
     rnum = f"{random.randint(100000, 999999)}-{random.randint(10,99)}"
     draw.text((40, y), f"Date: {line_item_date.strftime('%a %b %d, %Y')}", font=mono_font, fill=fg)
     draw.text((width-300, y), f"Receipt #: {rnum}", font=mono_font, fill=fg)
     y += 30
-    if template != "travel":
+    if template != "travel" and (template != "meal" or meal_overrides.get("show_cashier", True)):
         draw.text((40, y), f"Cashier: {cashier}", font=mono_font, fill=(90,90,90))
         y += 10
-    draw_hr(y); y += 16
     if template == "travel":
-        # minimal travel details
-        origin = faker_instance.city() if faker_instance else "Origin"
-        dest = faker_instance.city() if faker_instance else "Destination"
+        # minimal travel details BEFORE divider
+        origin = travel_overrides.get("from") or (faker_instance.city() if (faker_instance and travel_overrides.get("autogen", True)) else "Origin")
+        dest = travel_overrides.get("to") or (faker_instance.city() if (faker_instance and travel_overrides.get("autogen", True)) else "Destination")
         conf = f"PNR {random.randint(100000,999999)}"
+        carrier = travel_overrides.get("carrier") or ("XX" if not travel_overrides.get("autogen", True) else "XX")
+        flight = travel_overrides.get("flight") or (str(random.randint(100,9999)) if travel_overrides.get("autogen", True) else "")
+        seat = travel_overrides.get("seat") or ("-" if not travel_overrides.get("autogen", True) else "12C")
+        fare = travel_overrides.get("fare") or ("-" if not travel_overrides.get("autogen", True) else "Y")
         draw.text((40, y), f"From: {origin}", font=mono_font, fill=fg); y += 24
         draw.text((40, y), f"To:   {dest}", font=mono_font, fill=fg); y += 24
-        draw.text((40, y), f"{conf}", font=mono_font, fill=(90,90,90)); y += 6
-        draw_hr(y); y += 16
+        draw.text((40, y), f"{conf}", font=mono_font, fill=(90,90,90)); y += 22
+        # Extra travel details
+        if carrier:
+            draw.text((40, y), f"Carrier: {carrier}", font=mono_font, fill=fg); y += 20
+        if flight:
+            draw.text((200, y-20), f"Flight: {flight}", font=mono_font, fill=fg); y += 20
+        if seat and seat != "-":
+            draw.text((40, y), f"Seat: {seat}", font=mono_font, fill=fg); y += 20
+        if fare and fare != "-":
+            draw.text((200, y-20), f"Fare: {fare}", font=mono_font, fill=fg); y += 20
+    draw_hr(draw, y, weight=rcpt_line_weight, dashed=rcpt_dashed); y += 16
+    if template == "meal":
+        if meal_overrides.get("table"):
+            draw.text((40, y), f"Table: {meal_overrides.get('table')}", font=mono_font, fill=fg); y += 22
+        if meal_overrides.get("server"):
+            draw.text((40, y), f"Server: {meal_overrides.get('server')}", font=mono_font, fill=fg); y += 6
+        draw_hr(draw, y, weight=rcpt_line_weight, dashed=rcpt_dashed); y += 16
 
     draw.text((40, y), "Item", font=small_font, fill=(90,90,90))
     draw.text((width-255, y), "Qty", font=small_font, fill=(90,90,90))
@@ -863,7 +963,7 @@ def _create_receipt_image(expense_row: dict, faker_instance: Faker) -> Tuple[str
                 first = False
             y += line_y_gap-8
         y += 2
-    draw_hr(y); y += 14
+    draw_hr(draw, y, weight=rcpt_line_weight, dashed=rcpt_dashed); y += 14
 
     def right_label(label, val):
         nonlocal y
@@ -879,14 +979,14 @@ def _create_receipt_image(expense_row: dict, faker_instance: Faker) -> Tuple[str
     draw.text((width-220, y), "TOTAL", font=header_font, fill=fg)
     draw.text((width-95, y), money(round(subtotal + tax + tip, 2)), font=header_font, fill=fg)
     y += 30
-    draw_hr(y); y += 14
+    draw_hr(draw, y, weight=rcpt_line_weight, dashed=rcpt_dashed); y += 14
 
     pm = mask_card()
     draw.text((40, y), pm, font=mono_font, fill=fg)
     y += 26
     draw.text((40, y), auth_code(), font=mono_font, fill=(90,90,90))
     y += 10
-    draw_hr(y); y += 14
+    draw_hr(draw, y, weight=rcpt_line_weight, dashed=rcpt_dashed); y += 14
 
     policy = "Returns within 30 days with receipt. Items must be unused and in original packaging."
     for line in _tw.wrap(policy, width=70):
@@ -908,7 +1008,7 @@ def _create_receipt_image(expense_row: dict, faker_instance: Faker) -> Tuple[str
     img.save(img_buffer, format="PNG")
     img_buffer.seek(0)
 
-    filename = f"Receipt_{exp_code}_{line_item_date.strftime('%Y%m%d')}.png"
+    filename = f"Receipt_{exp_code}_{line_item_date.strftime('%Y%m%d')}{uniq_suffix()}.png"
     return filename, img_buffer
 def _customize_email_body(matter_number: str, invoice_number: str) -> Tuple[str, str]:
     """Customize email subject and body with matter and invoice number."""
@@ -1072,6 +1172,32 @@ with tab_objects[2]:
             value=min(20, max_fees),
             format="%d"
         )
+        st.markdown("<h3 style='color: #1E1E1E;'>Expense Settings</h3>", unsafe_allow_html=True)
+        with st.expander("Adjust Expense Amounts", expanded=False):
+            st.number_input(
+                "Local Travel (E109) mileage rate ($/mile)",
+                min_value=0.20, max_value=2.00, value=0.65, step=0.01,
+                key="mileage_rate_e109",
+                help="Used to calculate E109 totals as miles × rate. Miles are stored in the HOURS column."
+            )
+            st.slider(
+                "Out-of-town Travel (E110) amount range ($)",
+                min_value=10.0, max_value=2000.0, value=(100.0, 800.0), step=10.0,
+                key="travel_range_e110",
+                help="Random amount for each E110 line will be drawn from this range."
+            )
+            st.slider(
+                "Telephone (E105) amount range ($)",
+                min_value=1.0, max_value=150.0, value=(5.0, 40.0), step=1.0,
+                key="telephone_range_e105",
+                help="Random amount for each E105 line will be drawn from this range."
+            )
+            st.slider(
+                "Copying (E101) per-page rate ($)",
+                min_value=0.05, max_value=1.50, value=0.24, step=0.01,
+                key="copying_rate_e101",
+                help="Per-page rate used for E101 Copying expenses."
+            )
         st.caption("Number of expense line items to generate")
         expenses = st.slider(
             "Number of Expense Line Items",
@@ -1125,6 +1251,48 @@ with tab_objects[2]:
         combine_ledes = False
 
     generate_receipts = st.checkbox("Generate Sample Receipts for Expenses?", value=False)
+
+if generate_receipts:
+    receipt_tabs = st.tabs(["Receipt Settings"])
+    with receipt_tabs[0]:
+        st.caption("These settings affect only the generated sample receipts.")
+        with st.expander("Global Style", expanded=False):
+            st.slider(
+                "Receipt scale (affects font sizes)",
+                min_value=0.8, max_value=1.4, value=1.0, step=0.05,
+                key="rcpt_scale"
+            )
+            st.slider(
+                "Divider line weight",
+                min_value=1, max_value=4, value=1, step=1,
+                key="rcpt_line_weight"
+            )
+            st.checkbox(
+                "Use dashed dividers",
+                value=False,
+                key="rcpt_dashed"
+            )
+
+        with st.expander("Footer Policy Visibility", expanded=False):
+            st.checkbox("Show policy on Travel (E110)", value=True, key="rcpt_show_policy_travel")
+            st.checkbox("Show policy on Meals (E111)", value=True, key="rcpt_show_policy_meal")
+            st.checkbox("Show policy on Mileage (E109)", value=True, key="rcpt_show_policy_mileage")
+            st.checkbox("Show policy on Supplies/Other (E124)", value=True, key="rcpt_show_policy_supplies")
+            st.checkbox("Show policy on Other (generic)", value=True, key="rcpt_show_policy_generic")
+
+        with st.expander("Travel Details (E110)", expanded=False):
+            st.text_input("Carrier code (e.g., AA, UA)", value="", key="rcpt_travel_carrier")
+            st.text_input("Flight number", value="", key="rcpt_travel_flight")
+            st.text_input("Seat", value="", key="rcpt_travel_seat")
+            st.text_input("Fare class", value="", key="rcpt_travel_fare")
+            st.text_input("From (city)", value="", key="rcpt_travel_from")
+            st.text_input("To (city)", value="", key="rcpt_travel_to")
+            st.checkbox("Auto-generate blank travel fields", value=True, key="rcpt_travel_autogen")
+
+        with st.expander("Meal Details (E111)", expanded=False):
+            st.text_input("Table #", value="", key="rcpt_meal_table")
+            st.text_input("Server ID", value="", key="rcpt_meal_server")
+            st.checkbox("Include cashier line", value=True, key="rcpt_meal_show_cashier")
 
 
 # Email Configuration Tab (only created if send_email is True)
