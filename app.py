@@ -885,6 +885,7 @@ def _create_receipt_image(expense_row: dict, faker_instance: Faker) -> Tuple[str
     except Exception:
         title_font = ImageFont.load_default()
         header_font = ImageFont.load_default()
+    # Header title and starting y
         mono_font = ImageFont.load_default()
         small_font = ImageFont.load_default()
         tiny_font = ImageFont.load_default()
@@ -900,8 +901,27 @@ def _create_receipt_image(expense_row: dict, faker_instance: Faker) -> Tuple[str
                     x = x2 + gap
             else:
                 draw.line([(pad_left, y), (width - pad_right, y)], fill=faint, width=weight)
+    # Header title and starting y
+    y = 30
+    title = "TRAVEL RECEIPT" if template == "travel" else "RECEIPT"
+    try:
+        tw = draw.textlength(title, font=title_font)
+    except Exception:
+        # Fallback for older Pillow
+        tw = title_font.getlength(title) if hasattr(title_font, "getlength") else len(title) * 10
+    draw.text(((width - tw) / 2, y), title, font=title_font, fill=fg)
     y += 42
 
+    # Header title and starting y
+    y = 30
+    title = "TRAVEL RECEIPT" if template == "travel" else "RECEIPT"
+    try:
+        tw = draw.textlength(title, font=title_font)
+    except Exception:
+        # Fallback for older Pillow
+        tw = title_font.getlength(title) if hasattr(title_font, "getlength") else len(title) * 10
+    draw.text(((width - tw) / 2, y), title, font=title_font, fill=fg)
+    y += 42
     for line in (merchant, m_addr, f"Tel: {m_phone}"):
         draw.text((40, y), line, font=header_font, fill=fg)
         y += 26
@@ -1252,50 +1272,45 @@ with tab_objects[2]:
 
     generate_receipts = st.checkbox("Generate Sample Receipts for Expenses?", value=False)
 
-if generate_receipts:
-    receipt_tabs = st.tabs(["Receipt Settings"])
-    with receipt_tabs[0]:
-        st.caption("These settings affect only the generated sample receipts.")
-        with st.expander("Global Style", expanded=False):
-            st.slider(
-                "Receipt scale (affects font sizes)",
-                min_value=0.8, max_value=1.4, value=1.0, step=0.05,
-                key="rcpt_scale"
-            )
-            st.slider(
-                "Divider line weight",
-                min_value=1, max_value=4, value=1, step=1,
-                key="rcpt_line_weight"
-            )
-            st.checkbox(
-                "Use dashed dividers",
-                value=False,
-                key="rcpt_dashed"
-            )
-
-        with st.expander("Footer Policy Visibility", expanded=False):
-            st.checkbox("Show policy on Travel (E110)", value=True, key="rcpt_show_policy_travel")
-            st.checkbox("Show policy on Meals (E111)", value=True, key="rcpt_show_policy_meal")
-            st.checkbox("Show policy on Mileage (E109)", value=True, key="rcpt_show_policy_mileage")
-            st.checkbox("Show policy on Supplies/Other (E124)", value=True, key="rcpt_show_policy_supplies")
-            st.checkbox("Show policy on Other (generic)", value=True, key="rcpt_show_policy_generic")
-
-        with st.expander("Travel Details (E110)", expanded=False):
-            st.text_input("Carrier code (e.g., AA, UA)", value="", key="rcpt_travel_carrier")
-            st.text_input("Flight number", value="", key="rcpt_travel_flight")
-            st.text_input("Seat", value="", key="rcpt_travel_seat")
-            st.text_input("Fare class", value="", key="rcpt_travel_fare")
-            st.text_input("From (city)", value="", key="rcpt_travel_from")
-            st.text_input("To (city)", value="", key="rcpt_travel_to")
-            st.checkbox("Auto-generate blank travel fields", value=True, key="rcpt_travel_autogen")
-
-        with st.expander("Meal Details (E111)", expanded=False):
-            st.text_input("Table #", value="", key="rcpt_meal_table")
-            st.text_input("Server ID", value="", key="rcpt_meal_server")
-            st.checkbox("Include cashier line", value=True, key="rcpt_meal_show_cashier")
-
-
-# Email Configuration Tab (only created if send_email is True)
+    if generate_receipts:
+        receipt_tabs = st.tabs(["Receipt Settings"])
+        with receipt_tabs[0]:
+            st.caption("These settings affect only the generated sample receipts.")
+            with st.expander("Global Style", expanded=False):
+                st.slider(
+                    "Receipt scale (affects font sizes)",
+                    min_value=0.8, max_value=1.4, value=1.0, step=0.05,
+                    key="rcpt_scale"
+                )
+                st.slider(
+                    "Divider line weight",
+                    min_value=1, max_value=4, value=1, step=1,
+                    key="rcpt_line_weight"
+                )
+                st.checkbox(
+                    "Use dashed dividers",
+                    value=False,
+                    key="rcpt_dashed"
+                )
+            with st.expander("Footer Policy Visibility", expanded=False):
+                st.checkbox("Show policy on Travel (E110)", value=True, key="rcpt_show_policy_travel")
+                st.checkbox("Show policy on Meals (E111)", value=True, key="rcpt_show_policy_meal")
+                st.checkbox("Show policy on Mileage (E109)", value=True, key="rcpt_show_policy_mileage")
+                st.checkbox("Show policy on Supplies/Other (E124)", value=True, key="rcpt_show_policy_supplies")
+                st.checkbox("Show policy on Other (generic)", value=True, key="rcpt_show_policy_generic")
+            with st.expander("Travel Details (E110)", expanded=False):
+                st.text_input("Carrier code (e.g., AA, UA)", value="", key="rcpt_travel_carrier")
+                st.text_input("Flight number", value="", key="rcpt_travel_flight")
+                st.text_input("Seat", value="", key="rcpt_travel_seat")
+                st.text_input("Fare class", value="", key="rcpt_travel_fare")
+                st.text_input("From (city)", value="", key="rcpt_travel_from")
+                st.text_input("To (city)", value="", key="rcpt_travel_to")
+                st.checkbox("Auto-generate blank travel fields", value=True, key="rcpt_travel_autogen")
+            with st.expander("Meal Details (E111)", expanded=False):
+                st.text_input("Table #", value="", key="rcpt_meal_table")
+                st.text_input("Server ID", value="", key="rcpt_meal_server")
+                st.checkbox("Include cashier line", value=True, key="rcpt_meal_show_cashier")
+    # Email Configuration Tab (only created if send_email is True)
 if st.session_state.send_email:
     email_tab_index = len(tabs) - 1
     with tab_objects[email_tab_index]:
