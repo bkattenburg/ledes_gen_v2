@@ -316,24 +316,6 @@ def _generate_expenses(expense_count: int, billing_start_date: datetime.date, bi
     rows: List[Dict] = []
     delta = billing_end_date - billing_start_date
     num_days = max(1, delta.days + 1)
-    # Read tunable expense settings from UI
-    try:
-        import streamlit as st
-    except Exception:
-        st = None
-    mileage_rate_cfg = float(st.session_state.get("mileage_rate_e109", 0.65)) if st else 0.65
-    travel_rng = st.session_state.get("travel_range_e110", (100.0, 800.0)) if st else (100.0, 800.0)
-    tel_rng = st.session_state.get("telephone_range_e105", (5.0, 15.0)) if st else (5.0, 40.0)
-    copying_rate = float(st.session_state.get("copying_rate_e101", 0.24)) if st else 0.24
-    try:
-        travel_min, travel_max = float(travel_rng[0]), float(travel_rng[1])
-    except Exception:
-        travel_min, travel_max = 100.0, 800.0
-    try:
-        tel_min, tel_max = float(tel_rng[0]), float(tel_rng[1])
-    except Exception:
-        tel_min, tel_max = 5.0, 15.0
-
 
     # Always include some Copying (E101)
     e101_actual_count = random.randint(1, min(3, expense_count))
@@ -341,7 +323,7 @@ def _generate_expenses(expense_count: int, billing_start_date: datetime.date, bi
         description = "Copying"
         expense_code = "E101"
         hours = random.randint(50, 300)  # number of pages
-        rate = round(copying_rate, 2)  # per-page
+        rate = round(random.uniform(0.14, 0.25), 2)  # per-page
         random_day_offset = random.randint(0, num_days - 1)
         line_item_date = billing_start_date + datetime.timedelta(days=random_day_offset)
         line_item_total = round(hours * rate, 2)
@@ -364,15 +346,15 @@ def _generate_expenses(expense_count: int, billing_start_date: datetime.date, bi
         if expense_code == "E109":  # Local travel (mileage)
             miles = random.randint(5, 50)
             hours = miles  # store miles in HOURS
-            rate = mileage_rate_cfg  # mileage rate from UI
+            rate = 0.65    # mileage rate
             line_item_total = round(miles * rate, 2)
         elif expense_code == "E110":  # Out-of-town travel (ticket/transport)
             hours = 1
-            rate = round(random.uniform(travel_min, travel_max), 2)
+            rate = round(random.uniform(100.0, 800.0), 2)
             line_item_total = rate
         elif expense_code == "E105":  # Telephone
             hours = 1
-            rate = round(random.uniform(tel_min, tel_max), 2)
+            rate = round(random.uniform(5.0, 40.0), 2)
             line_item_total = rate
         elif expense_code == "E107":  # Delivery/messenger
             hours = 1
@@ -450,11 +432,6 @@ def _ensure_mandatory_lines(rows: List[Dict], timekeeper_data: List[Dict], invoi
                 "ACTIVITY_CODE": "", "EXPENSE_CODE": item['expense_code'], "DESCRIPTION": item['desc'],
                 "HOURS": random.randint(1, 10), "RATE": round(random.uniform(5.0, 100.0), 2)
             }
-            # Spend Agent override for Uber E110
-            if item_name == "Uber E110" or item.get("expense_code") == "E110":
-                row["DESCRIPTION"] = "UberX ride"
-                row["HOURS"] = 1
-                row["RATE"] = round(random.uniform(12.0, 45.0), 2)
             row["LINE_ITEM_TOTAL"] = round(row["HOURS"] * row["RATE"], 2)
         else:
             row = {
@@ -672,36 +649,6 @@ def _create_receipt_image(expense_row: dict, faker_instance: Faker) -> Tuple[str
     faint = (90, 90, 90)
     line_y_gap = 28
 
-    # Determine template from expense code/description
-    exp_code = str(expense_row.get("EXPENSE_CODE", "")).strip()
-    desc_l = (str(expense_row.get("DESCRIPTION","")) or "").lower()
-    template = "generic"
-    if "uber" in desc_l or "lyft" in desc_l:
-        template = "rideshare"
-    elif exp_code == "E110":
-        template = "travel"
-    elif exp_code == "E111":
-        template = "meal"
-    elif exp_code == "E109":
-        template = "mileage"
-    elif exp_code == "E124":
-        template = "supplies"
-    elif exp_code == "E107":
-        template = "delivery"
-    elif exp_code == "E108":
-        template = "postage"
-    # Canvas size per template
-    width, height = {
-        "rideshare": (600, 900),
-        "travel": (800, 1000),
-        "meal": (600, 950),
-        "mileage": (600, 820),
-        "supplies": (600, 900),
-        "delivery": (600, 900),
-        "postage": (600, 900),
-        "generic": (600, 950),
-    }[template]
-
     TAX_MAP = {
         "E111": 0.085,
         "E110": 0.000,
@@ -709,7 +656,7 @@ def _create_receipt_image(expense_row: dict, faker_instance: Faker) -> Tuple[str
         "E108": 0.000,
         "E115": 0.085,
         "E116": 0.085,
-        "E117": 0.0,
+        "E117": 0.085,
     }
 
     def money(x):
@@ -739,21 +686,13 @@ def _create_receipt_image(expense_row: dict, faker_instance: Faker) -> Tuple[str
                 ("Beverage", 1, drink_unit, drink_unit),
             ]
         elif expense_code == "E110":
-            miles = random.randint(3, 10) if template=="rideshare" else random.randint(10, 50)
-            if template == "rideshare":
-                base = round(max(2.5, total * 0.30), 2)
-                per_mile = round(max(0.9, (total - base) / max(miles,1)), 2)
-                items = [
-                    ("Base Fare", 1, base, base),
-                    (f"Distance {miles} mi", 1, per_mile*miles, round(per_mile*miles,2)),
-                ]
-                # Tip handled in totals; not added as line item.
-            else:
-                base = round(max(10.0, total * 0.75), 2)
-                fees = round(max(0.0, total - base), 2)
-                items = [("Base Fare", 1, base, base)]
-                if fees>0:
-                    items.append(("Taxes/Fees", 1, fees, fees))
+            miles = random.randint(3, 20)
+            base = round(max(2.5, total * 0.15), 2)
+            per_mile = round(max(0.9, (total - base) / max(miles,1)), 2)
+            items = [
+                ("Base Fare", 1, base, base),
+                (f"Distance {miles} mi", 1, per_mile*miles, round(per_mile*miles,2)),
+            ]
         elif expense_code == "E108":
             weight = random.uniform(0.5, 4.0)
             unit = round(total, 2)
@@ -789,28 +728,18 @@ def _create_receipt_image(expense_row: dict, faker_instance: Faker) -> Tuple[str
     subtotal = round(sum(x[3] for x in items), 2)
 
     tax_rate = TAX_MAP.get(exp_code, 0.085 if subtotal>0 else 0.0)
-    # No-tax services by expense code
-    if exp_code in ("E118","E119","E120","E121","E122","E123"):
-        tax_rate = 0.0
     tax = round(subtotal * tax_rate, 2)
 
     tip = 0.0
     if exp_code in ("E111","E110"):
         target_total = total_amount
-        if exp_code == "E111":
-            pct = 0.15
-        else:
-            pct = random.choice([0.10, 0.15, 0.20])
-        tip = round(subtotal * pct, 2)
-        if exp_code == "E110" and tip < 1.0:
-            tip = 1.0
+        tip_guess = 0.15 if exp_code=="E111" else 0.10
+        tip = round(subtotal * tip_guess, 2)
         over = round((subtotal + tax + tip) - target_total, 2)
         if over > 0:
-            min_tip = 1.0 if exp_code == "E110" else 0.0
-            tip = max(min_tip, round(tip - over, 2))
+            tip = max(0.0, round(tip - over, 2))
         else:
             tip = round(tip + abs(over), 2)
-
 
     grand = round(subtotal + tax + tip, 2)
     drift = round(total_amount - grand, 2)
@@ -842,7 +771,7 @@ def _create_receipt_image(expense_row: dict, faker_instance: Faker) -> Tuple[str
         draw.line([(pad_left, y), (width - pad_right, y)], fill=faint, width=1)
 
     y = 30
-    title = "TRIP RECEIPT" if template=="rideshare" else ("TRAVEL RECEIPT" if template=="travel" else "RECEIPT")
+    title = "RECEIPT"
     tw = draw.textlength(title, font=title_font)
     draw.text(((width - tw) / 2, y), title, font=title_font, fill=fg)
     y += 42
@@ -857,43 +786,8 @@ def _create_receipt_image(expense_row: dict, faker_instance: Faker) -> Tuple[str
     draw.text((40, y), f"Date: {line_item_date.strftime('%a %b %d, %Y')}", font=mono_font, fill=fg)
     draw.text((width-300, y), f"Receipt #: {rnum}", font=mono_font, fill=fg)
     y += 30
-    if template in {"meal","supplies","delivery","postage"}:
-        draw.text((40, y), f"Cashier: {cashier}", font=mono_font, fill=(90,90,90))
-        y += 10
-    if template == "rideshare":
-        # Rich rideshare layout: date/time, driver, vehicle, pickup/dropoff, payment, trip id
-        driver = faker_instance.name() if faker_instance else "Driver Name"
-        trip_id = f"TRIP-{random.randint(1000000,9999999)}"
-        try:
-            base_date = line_item_date
-        except Exception:
-            import datetime as _dt
-            base_date = _dt.date.today()
-        import datetime as _dt
-        start_dt = _dt.datetime.combine(base_date, _dt.time(hour=random.randint(6, 21), minute=random.randint(0, 59)))
-        end_dt = start_dt + _dt.timedelta(minutes=random.randint(8, 35))
-        pickup_addr = faker_instance.street_address() if faker_instance else "123 Main St"
-        pickup_city = faker_instance.city() if faker_instance else "Pickup City"
-        drop_addr = faker_instance.street_address() if faker_instance else "456 Oak Ave"
-        drop_city = faker_instance.city() if faker_instance else "Dropoff City"
-        vehicle = random.choice([
-            "Toyota Camry (Black)", "Honda Accord (Silver)", "Tesla Model 3 (White)",
-            "Chevrolet Malibu (Blue)", "Hyundai Elantra (Gray)"
-        ])
-        plate = f"{random.choice(['7','8','9'])}{random.choice(['A','B','C','D'])}{random.randint(100,999)}"
-        last4 = random.randint(1000, 9999)
-        # Header lines
-        draw.text((40, y), base_date.strftime("%b %d, %Y"), font=mono_font, fill=fg); y += 20
-        time_str = f"{start_dt.strftime('%I:%M %p')}–{end_dt.strftime('%I:%M %p')}"
-        draw.text((40, y), f"Time: {time_str}", font=mono_font, fill=fg); y += 22
-        draw.text((40, y), f"Driver: {driver}", font=mono_font, fill=fg); y += 20
-        draw.text((40, y), f"Vehicle: {vehicle}  •  Plate {plate}", font=mono_font, fill=fg); y += 20
-        draw.text((40, y), f"Pickup:  {pickup_addr}", font=mono_font, fill=fg); y += 18
-        draw.text((100, y), f"{pickup_city}", font=small_font, fill=(90,90,90)); y += 18
-        draw.text((40, y), f"Dropoff: {drop_addr}", font=mono_font, fill=fg); y += 18
-        draw.text((100, y), f"{drop_city}", font=small_font, fill=(90,90,90)); y += 18
-        draw.text((40, y), f"Payment: Visa •••• {last4}", font=mono_font, fill=fg); y += 18
-        draw.text((40, y), f"Trip ID: {trip_id}", font=mono_font, fill=(90,90,90)); y += 222
+    draw.text((40, y), f"Cashier: {cashier}", font=mono_font, fill=(90,90,90))
+    y += 10
     draw_hr(y); y += 16
 
     draw.text((40, y), "Item", font=small_font, fill=(90,90,90))
@@ -940,11 +834,10 @@ def _create_receipt_image(expense_row: dict, faker_instance: Faker) -> Tuple[str
     y += 10
     draw_hr(y); y += 14
 
-    if template == "supplies":
-        policy = "Returns within 30 days with receipt. Items must be unused and in original packaging."
-        for line in _tw.wrap(policy, width=70):
-            draw.text((40, y), line, font=tiny_font, fill=(90,90,90))
-            y += 20
+    policy = "Returns within 30 days with receipt. Items must be unused and in original packaging."
+    for line in _tw.wrap(policy, width=70):
+        draw.text((40, y), line, font=tiny_font, fill=(90,90,90))
+        y += 20
 
     y = height - 80
     x = 40
@@ -1125,32 +1018,6 @@ with tab_objects[2]:
             value=min(20, max_fees),
             format="%d"
         )
-        st.markdown("<h3 style='color: #1E1E1E;'>Expense Settings</h3>", unsafe_allow_html=True)
-        with st.expander("Adjust Expense Amounts", expanded=False):
-            st.number_input(
-                "Local Travel (E109) mileage rate ($/mile)",
-                min_value=0.20, max_value=2.00, value=0.65, step=0.01,
-                key="mileage_rate_e109",
-                help="Used to calculate E109 totals as miles × rate. Miles are stored in the HOURS column."
-            )
-            st.slider(
-                "Out-of-town Travel (E110) amount range ($)",
-                min_value=10.0, max_value=2000.0, value=(100.0, 800.0), step=10.0,
-                key="travel_range_e110",
-                help="Random amount for each E110 line will be drawn from this range."
-            )
-            st.slider(
-                "Telephone (E105) amount range ($)",
-                min_value=1.0, max_value=150.0, value=(5.0, 40.0), step=1.0,
-                key="telephone_range_e105",
-                help="Random amount for each E105 line will be drawn from this range."
-            )
-            st.slider(
-                "Copying (E101) per-page rate ($)",
-                min_value=0.05, max_value=1.50, value=0.24, step=0.01,
-                key="copying_rate_e101",
-                help="Per-page rate used for E101 Copying expenses."
-            )
         st.caption("Number of expense line items to generate")
         expenses = st.slider(
             "Number of Expense Line Items",
@@ -1308,11 +1175,7 @@ if generate_button:
                 
                 if generate_receipts:
                     for row in rows:
-                        ec = row.get("EXPENSE_CODE") or ""
-                        desc_l = (row.get("DESCRIPTION","") or "").lower()
-                        # Skip receipts for Copying, Word processing, Facsimile, Telephone
-                        skip = ec in {"E101","E103","E104","E105"} or any(k in desc_l for k in ["word processing","facsimile","fax","telephone"])
-                        if row.get("EXPENSE_CODE") and not skip:
+                        if row.get("EXPENSE_CODE") and row.get("EXPENSE_CODE") != "E101":  # Exclude Copying (E101)
                             receipt_filename, receipt_data_buf = _create_receipt_image(row, faker)
                             if receipt_data_buf:
                                 attachments_list.append((receipt_filename, receipt_data_buf.getvalue()))
