@@ -1013,13 +1013,12 @@ csv_custom = sample_custom.to_csv(index=False).encode('utf-8')
 st.sidebar.download_button("Download Sample Custom Tasks CSV", csv_custom, "sample_custom_tasks.csv", "text/csv")
 
 # Dynamic Tabs
-tabs = ["File Upload", "Invoice Inputs", "Advanced Settings"]
-if st.session_state.send_email:
-    tabs.append("Email Configuration")
+tabs = ["Data Sources", "Invoice Details", "Fees & Expenses", "Output"]
+# Email settings will live under the Output tab.
 tab_objects = st.tabs(tabs)
 
 with tab_objects[0]:
-    st.markdown("<h3 style='color: #1E1E1E;'>File Upload</h3>", unsafe_allow_html=True)
+    st.markdown("<h3 style='color: #1E1E1E;'>Data Sources</h3>", unsafe_allow_html=True)
     uploaded_timekeeper_file = st.file_uploader("Upload Timekeeper CSV (tk_info.csv)", type="csv")
     timekeeper_data = _load_timekeepers(uploaded_timekeeper_file)
 
@@ -1066,7 +1065,7 @@ with tab_objects[1]:
     )
 
 with tab_objects[2]:
-    st.markdown("<h2 style='color: #1E1E1E;'>Generation Settings</h2>", unsafe_allow_html=True)
+    st.markdown("<h2 style='color: #1E1E1E;'>Fees & Expenses</h2>", unsafe_allow_html=True)
     spend_agent = st.checkbox("Spend Agent", value=False, help="Ensures selected mandatory line items are included; configure below.")
     
     if timekeeper_data is None:
@@ -1124,8 +1123,11 @@ with tab_objects[2]:
         selected_items = st.multiselect("Select Mandatory Items to Include", list(CONFIG['MANDATORY_ITEMS'].keys()), default=list(CONFIG['MANDATORY_ITEMS'].keys()))
     else:
         selected_items = []
-    
-    st.markdown("<h3 style='color: #1E1E1E;'>Output Settings</h3>", unsafe_allow_html=True)
+
+
+with tab_objects[3]:
+    st.markdown("<h2 style='color: #1E1E1E;'>Output</h2>", unsafe_allow_html=True)
+ #1E1E1E;'>Output Settings</h3>", unsafe_allow_html=True)
     include_block_billed = st.checkbox("Include Block Billed Line Items", value=True)
     include_pdf = st.checkbox("Include PDF Invoice", value=False)
     
