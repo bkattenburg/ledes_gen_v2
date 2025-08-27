@@ -316,6 +316,24 @@ def _generate_expenses(expense_count: int, billing_start_date: datetime.date, bi
     rows: List[Dict] = []
     delta = billing_end_date - billing_start_date
     num_days = max(1, delta.days + 1)
+    # Read tunable expense settings from UI
+    try:
+        import streamlit as st
+    except Exception:
+        st = None
+    mileage_rate_cfg = float(st.session_state.get("mileage_rate_e109", 0.65)) if st else 0.65
+    travel_rng = st.session_state.get("travel_range_e110", (100.0, 800.0)) if st else (100.0, 800.0)
+    tel_rng = st.session_state.get("telephone_range_e105", (5.0, 40.0)) if st else (5.0, 40.0)
+    copying_rate = float(st.session_state.get("copying_rate_e101", 0.24)) if st else 0.24
+    try:
+        travel_min, travel_max = float(travel_rng[0]), float(travel_rng[1])
+    except Exception:
+        travel_min, travel_max = 100.0, 800.0
+    try:
+        tel_min, tel_max = float(tel_rng[0]), float(tel_rng[1])
+    except Exception:
+        tel_min, tel_max = 5.0, 40.0
+
 
     # Always include some Copying (E101)
     e101_actual_count = random.randint(1, min(3, expense_count))
@@ -323,7 +341,7 @@ def _generate_expenses(expense_count: int, billing_start_date: datetime.date, bi
         description = "Copying"
         expense_code = "E101"
         hours = random.randint(50, 300)  # number of pages
-        rate = round(random.uniform(0.14, 0.25), 2)  # per-page
+        rate = round(copying_rate, 2)  # per-page
         random_day_offset = random.randint(0, num_days - 1)
         line_item_date = billing_start_date + datetime.timedelta(days=random_day_offset)
         line_item_total = round(hours * rate, 2)
@@ -346,15 +364,15 @@ def _generate_expenses(expense_count: int, billing_start_date: datetime.date, bi
         if expense_code == "E109":  # Local travel (mileage)
             miles = random.randint(5, 50)
             hours = miles  # store miles in HOURS
-            rate = 0.65    # mileage rate
+            rate = mileage_rate_cfg  # mileage rate from UI
             line_item_total = round(miles * rate, 2)
         elif expense_code == "E110":  # Out-of-town travel (ticket/transport)
             hours = 1
-            rate = round(random.uniform(100.0, 800.0), 2)
+            rate = round(random.uniform(travel_min, travel_max), 2)
             line_item_total = rate
         elif expense_code == "E105":  # Telephone
             hours = 1
-            rate = round(random.uniform(5.0, 40.0), 2)
+            rate = round(random.uniform(tel_min, tel_max), 2)
             line_item_total = rate
         elif expense_code == "E107":  # Delivery/messenger
             hours = 1
@@ -1096,6 +1114,32 @@ with tab_objects[2]:
             value=min(20, max_fees),
             format="%d"
         )
+        st.markdown("<h3 style='color: #1E1E1E;'>Expense Settings</h3>", unsafe_allow_html=True)
+        with st.expander("Adjust Expense Amounts", expanded=False):
+            st.number_input(
+                "Local Travel (E109) mileage rate ($/mile)",
+                min_value=0.20, max_value=2.00, value=0.65, step=0.01,
+                key="mileage_rate_e109",
+                help="Used to calculate E109 totals as miles × rate. Miles are stored in the HOURS column."
+            )
+            st.slider(
+                "Out-of-town Travel (E110) amount range ($)",
+                min_value=10.0, max_value=2000.0, value=(100.0, 800.0), step=10.0,
+                key="travel_range_e110",
+                help="Random amount for each E110 line will be drawn from this range."
+            )
+            st.slider(
+                "Telephone (E105) amount range ($)",
+                min_value=1.0, max_value=150.0, value=(5.0, 40.0), step=1.0,
+                key="telephone_range_e105",
+                help="Random amount for each E105 line will be drawn from this range."
+            )
+            st.slider(
+                "Copying (E101) per-page rate ($)",
+                min_value=0.05, max_value=1.50, value=0.24, step=0.01,
+                key="copying_rate_e101",
+                help="Per-page rate used for E101 Copying expenses."
+            )
         st.caption("Number of expense line items to generate")
         expenses = st.slider(
             "Number of Expense Line Items",
