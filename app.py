@@ -323,7 +323,7 @@ def _generate_expenses(expense_count: int, billing_start_date: datetime.date, bi
         st = None
     mileage_rate_cfg = float(st.session_state.get("mileage_rate_e109", 0.65)) if st else 0.65
     travel_rng = st.session_state.get("travel_range_e110", (100.0, 800.0)) if st else (100.0, 800.0)
-    tel_rng = st.session_state.get("telephone_range_e105", (1.0, 25.0)) if st else (5.0, 40.0)
+    tel_rng = st.session_state.get("telephone_range_e105", (5.0, 15.0)) if st else (5.0, 40.0)
     copying_rate = float(st.session_state.get("copying_rate_e101", 0.24)) if st else 0.24
     try:
         travel_min, travel_max = float(travel_rng[0]), float(travel_rng[1])
@@ -332,7 +332,7 @@ def _generate_expenses(expense_count: int, billing_start_date: datetime.date, bi
     try:
         tel_min, tel_max = float(tel_rng[0]), float(tel_rng[1])
     except Exception:
-        tel_min, tel_max = 1.0, 25.0
+        tel_min, tel_max = 5.0, 15.0
 
 
     # Always include some Copying (E101)
@@ -709,7 +709,7 @@ def _create_receipt_image(expense_row: dict, faker_instance: Faker) -> Tuple[str
         "E108": 0.000,
         "E115": 0.085,
         "E116": 0.085,
-        "E117": 0.085,
+        "E117": 0.0,
     }
 
     def money(x):
@@ -747,11 +747,7 @@ def _create_receipt_image(expense_row: dict, faker_instance: Faker) -> Tuple[str
                     ("Base Fare", 1, base, base),
                     (f"Distance {miles} mi", 1, per_mile*miles, round(per_mile*miles,2)),
                 ]
-                # Optional tip for rideshare
-                tip_pct = random.choice([0.0, 0.1, 0.15, 0.2])
-                tip_amt = round(total * tip_pct, 2)
-                if tip_amt > 0:
-                    items.append(("Tip", 1, tip_amt, tip_amt))
+                # Tip handled in totals; not added as line item.
             else:
                 base = round(max(10.0, total * 0.75), 2)
                 fees = round(max(0.0, total - base), 2)
@@ -793,18 +789,28 @@ def _create_receipt_image(expense_row: dict, faker_instance: Faker) -> Tuple[str
     subtotal = round(sum(x[3] for x in items), 2)
 
     tax_rate = TAX_MAP.get(exp_code, 0.085 if subtotal>0 else 0.0)
+    # No-tax services by expense code
+    if exp_code in ("E118","E119","E120","E121","E122","E123"):
+        tax_rate = 0.0
     tax = round(subtotal * tax_rate, 2)
 
     tip = 0.0
     if exp_code in ("E111","E110"):
         target_total = total_amount
-        tip_guess = 0.15 if exp_code=="E111" else 0.10
-        tip = round(subtotal * tip_guess, 2)
+        if exp_code == "E111":
+            pct = 0.15
+        else:
+            pct = random.choice([0.10, 0.15, 0.20])
+        tip = round(subtotal * pct, 2)
+        if exp_code == "E110" and tip < 1.0:
+            tip = 1.0
         over = round((subtotal + tax + tip) - target_total, 2)
         if over > 0:
-            tip = max(0.0, round(tip - over, 2))
+            min_tip = 1.0 if exp_code == "E110" else 0.0
+            tip = max(min_tip, round(tip - over, 2))
         else:
             tip = round(tip + abs(over), 2)
+
 
     grand = round(subtotal + tax + tip, 2)
     drift = round(total_amount - grand, 2)
@@ -887,7 +893,7 @@ def _create_receipt_image(expense_row: dict, faker_instance: Faker) -> Tuple[str
         draw.text((40, y), f"Dropoff: {drop_addr}", font=mono_font, fill=fg); y += 18
         draw.text((100, y), f"{drop_city}", font=small_font, fill=(90,90,90)); y += 18
         draw.text((40, y), f"Payment: Visa •••• {last4}", font=mono_font, fill=fg); y += 18
-        draw.text((40, y), f"Trip ID: {trip_id}", font=mono_font, fill=(90,90,90)); y += 22
+        draw.text((40, y), f"Trip ID: {trip_id}", font=mono_font, fill=(90,90,90)); y += 222
     draw_hr(y); y += 16
 
     draw.text((40, y), "Item", font=small_font, fill=(90,90,90))
