@@ -667,6 +667,44 @@ def _create_receipt_image(expense_row: dict, faker_instance: Faker) -> Tuple[str
     faint = (90, 90, 90)
     line_y_gap = 28
 
+    
+    # === Receipt Settings read from UI ===
+    try:
+        import streamlit as st
+    except Exception:
+        st = None
+    rcpt_scale = (st.session_state.get("rcpt_scale", 1.0) if st else 1.0)
+    rcpt_line_weight = int(st.session_state.get("rcpt_line_weight", 1)) if st else 1
+    rcpt_dashed = bool(st.session_state.get("rcpt_dashed", False)) if st else False
+    
+    show_policy_map = {
+        "travel": bool(st.session_state.get("rcpt_show_policy_travel", True)) if st else True,
+        "meal": bool(st.session_state.get("rcpt_show_policy_meal", True)) if st else True,
+        "mileage": bool(st.session_state.get("rcpt_show_policy_mileage", True)) if st else True,
+        "supplies": bool(st.session_state.get("rcpt_show_policy_supplies", True)) if st else True,
+        "generic": bool(st.session_state.get("rcpt_show_policy_generic", True)) if st else True,
+        "delivery": True,
+        "postage": True,
+        "rideshare": True,
+    }
+    
+    travel_overrides = {
+        "carrier": (st.session_state.get("rcpt_travel_carrier", "") if st else ""),
+        "flight": (st.session_state.get("rcpt_travel_flight", "") if st else ""),
+        "seat": (st.session_state.get("rcpt_travel_seat", "") if st else ""),
+        "fare": (st.session_state.get("rcpt_travel_fare", "") if st else ""),
+        "from": (st.session_state.get("rcpt_travel_from", "") if st else ""),
+        "to": (st.session_state.get("rcpt_travel_to", "") if st else ""),
+        "autogen": bool(st.session_state.get("rcpt_travel_autogen", True)) if st else True,
+    }
+    
+    meal_overrides = {
+        "table": (st.session_state.get("rcpt_meal_table", "") if st else ""),
+        "server": (st.session_state.get("rcpt_meal_server", "") if st else ""),
+        "show_cashier": bool(st.session_state.get("rcpt_meal_show_cashier", True)) if st else True,
+    }
+    
+
     TAX_MAP = {
         "E111": 0.085,
         "E110": 0.000,
@@ -773,11 +811,11 @@ def _create_receipt_image(expense_row: dict, faker_instance: Faker) -> Tuple[str
     draw = ImageDraw.Draw(img)
 
     try:
-        title_font = ImageFont.truetype("arial.ttf", 34)
-        header_font = ImageFont.truetype("arial.ttf", 22)
-        mono_font = ImageFont.truetype("arial.ttf", 22)
-        small_font = ImageFont.truetype("arial.ttf", 18)
-        tiny_font = ImageFont.truetype("arial.ttf", 15)
+        title_font = ImageFont.truetype("arial.ttf", max(12, int(34*rcpt_scale)))
+        header_font = ImageFont.truetype("arial.ttf", max(10, int(22*rcpt_scale)))
+        mono_font = ImageFont.truetype("arial.ttf", max(10, int(22*rcpt_scale)))
+        small_font = ImageFont.truetype("arial.ttf", max(8, int(18*rcpt_scale)))
+        tiny_font = ImageFont.truetype("arial.ttf", max(8, int(15*rcpt_scale)))
     except Exception:
         title_font = ImageFont.load_default()
         header_font = ImageFont.load_default()
@@ -785,8 +823,17 @@ def _create_receipt_image(expense_row: dict, faker_instance: Faker) -> Tuple[str
         small_font = ImageFont.load_default()
         tiny_font = ImageFont.load_default()
 
-    def draw_hr(y, pad_left=40, pad_right=40):
-        draw.line([(pad_left, y), (width - pad_right, y)], fill=faint, width=1)
+    def draw_hr(y, pad_left=40, pad_right=40, weight=1, dashed=False):
+        if dashed:
+            x = pad_left
+            dash = 8
+            gap = 6
+            while x < width - pad_right:
+                x2 = min(x + dash, width - pad_right)
+                draw.line([(x, y), (x2, y)], fill=faint, width=weight)
+                x = x2 + gap
+        else:
+            draw.line([(pad_left, y), (width - pad_right, y)], fill=faint, width=weight)
 
     y = 30
     title = "RECEIPT"
@@ -798,7 +845,7 @@ def _create_receipt_image(expense_row: dict, faker_instance: Faker) -> Tuple[str
         draw.text((40, y), line, font=header_font, fill=fg)
         y += 26
     y += 6
-    draw_hr(y); y += 14
+    draw_hr(y, weight=rcpt_line_weight, dashed=rcpt_dashed); y += 14
 
     rnum = f"{random.randint(100000, 999999)}-{random.randint(10,99)}"
     draw.text((40, y), f"Date: {line_item_date.strftime('%a %b %d, %Y')}", font=mono_font, fill=fg)
@@ -806,7 +853,7 @@ def _create_receipt_image(expense_row: dict, faker_instance: Faker) -> Tuple[str
     y += 30
     draw.text((40, y), f"Cashier: {cashier}", font=mono_font, fill=(90,90,90))
     y += 10
-    draw_hr(y); y += 16
+    draw_hr(y, weight=rcpt_line_weight, dashed=rcpt_dashed); y += 16
 
     draw.text((40, y), "Item", font=small_font, fill=(90,90,90))
     draw.text((width-255, y), "Qty", font=small_font, fill=(90,90,90))
@@ -827,7 +874,7 @@ def _create_receipt_image(expense_row: dict, faker_instance: Faker) -> Tuple[str
                 first = False
             y += line_y_gap-8
         y += 2
-    draw_hr(y); y += 14
+    draw_hr(y, weight=rcpt_line_weight, dashed=rcpt_dashed); y += 14
 
     def right_label(label, val):
         nonlocal y
@@ -843,14 +890,14 @@ def _create_receipt_image(expense_row: dict, faker_instance: Faker) -> Tuple[str
     draw.text((width-220, y), "TOTAL", font=header_font, fill=fg)
     draw.text((width-95, y), money(round(subtotal + tax + tip, 2)), font=header_font, fill=fg)
     y += 30
-    draw_hr(y); y += 14
+    draw_hr(y, weight=rcpt_line_weight, dashed=rcpt_dashed); y += 14
 
     pm = mask_card()
     draw.text((40, y), pm, font=mono_font, fill=fg)
     y += 26
     draw.text((40, y), auth_code(), font=mono_font, fill=(90,90,90))
     y += 10
-    draw_hr(y); y += 14
+    draw_hr(y, weight=rcpt_line_weight, dashed=rcpt_dashed); y += 14
 
     policy = "Returns within 30 days with receipt. Items must be unused and in original packaging."
     for line in _tw.wrap(policy, width=70):
@@ -1115,6 +1162,45 @@ with tab_objects[2]:
         combine_ledes = False
 
     generate_receipts = st.checkbox("Generate Sample Receipts for Expenses?", value=False)
+if generate_receipts:
+    receipt_tabs = st.tabs(["Receipt Settings"])
+    with receipt_tabs[0]:
+        st.caption("These settings affect only the generated sample receipts.")
+        with st.expander("Global Style", expanded=False):
+            st.slider(
+                "Receipt scale (affects font sizes)",
+                min_value=0.8, max_value=1.4, value=1.0, step=0.05,
+                key="rcpt_scale"
+            )
+            st.slider(
+                "Divider line weight",
+                min_value=1, max_value=4, value=1, step=1,
+                key="rcpt_line_weight"
+            )
+            st.checkbox(
+                "Use dashed dividers",
+                value=False,
+                key="rcpt_dashed"
+            )
+        with st.expander("Footer Policy Visibility", expanded=False):
+            st.checkbox("Show policy on Travel (E110)", value=True, key="rcpt_show_policy_travel")
+            st.checkbox("Show policy on Meals (E111)", value=True, key="rcpt_show_policy_meal")
+            st.checkbox("Show policy on Mileage (E109)", value=True, key="rcpt_show_policy_mileage")
+            st.checkbox("Show policy on Supplies/Other (E124)", value=True, key="rcpt_show_policy_supplies")
+            st.checkbox("Show policy on Other (generic)", value=True, key="rcpt_show_policy_generic")
+        with st.expander("Travel Details (E110)", expanded=False):
+            st.text_input("Carrier code (e.g., AA, UA)", value="", key="rcpt_travel_carrier")
+            st.text_input("Flight number", value="", key="rcpt_travel_flight")
+            st.text_input("Seat", value="", key="rcpt_travel_seat")
+            st.text_input("Fare class", value="", key="rcpt_travel_fare")
+            st.text_input("From (city)", value="", key="rcpt_travel_from")
+            st.text_input("To (city)", value="", key="rcpt_travel_to")
+            st.checkbox("Auto-generate blank travel fields", value=True, key="rcpt_travel_autogen")
+        with st.expander("Meal Details (E111)", expanded=False):
+            st.text_input("Table #", value="", key="rcpt_meal_table")
+            st.text_input("Server ID", value="", key="rcpt_meal_server")
+            st.checkbox("Include cashier line", value=True, key="rcpt_meal_show_cashier")
+
 
 
 # Email Configuration Tab (only created if send_email is True)
