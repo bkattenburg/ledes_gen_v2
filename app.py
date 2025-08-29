@@ -1062,14 +1062,32 @@ with col_sel[0]:
 with col_sel[1]:
     law_firm_row = st.selectbox("Law Firm", options=lawfirms, index=min(lf_index, max(len(lawfirms)-1,0)), format_func=fmt, key="sel_lawfirm")
 
-# Resolved values for the generator; fall back to manual if lists are empty
-if clients:
-    client_id = client_row["ext_id"]
+# --- Resolved values for the generator; fall back to manual if lists are empty or selection is None
+# Make sure indexes are in range when lists are non-empty
+cli_index = min(cli_index, len(clients) - 1) if clients else 0
+lf_index  = min(lf_index,  len(lawfirms) - 1) if lawfirms else 0
+
+client_row = st.selectbox(
+    "Client",
+    options=clients,
+    index=cli_index if clients else 0,
+    format_func=lambda r: f"{r['name']} — {r['ext_id']} ({r['environment']})"
+)
+law_firm_row = st.selectbox(
+    "Law Firm",
+    options=lawfirms,
+    index=lf_index if lawfirms else 0,
+    format_func=lambda r: f"{r['name']} — {r['ext_id']} ({r['environment']})"
+)
+
+# Safely resolve IDs; if there’s no selection, show manual input
+if clients and client_row:
+    client_id = client_row.get("ext_id", "")
 else:
     client_id = st.text_input("Client ID (manual)", value="")
 
-if lawfirms:
-    law_firm_id = law_firm_row["ext_id"]
+if lawfirms and law_firm_row:
+    law_firm_id = law_firm_row.get("ext_id", "")
 else:
     law_firm_id = st.text_input("Law Firm ID (manual)", value="")
 
