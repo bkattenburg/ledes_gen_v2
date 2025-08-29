@@ -24,6 +24,31 @@ from reportlab.lib.enums import TA_LEFT, TA_RIGHT, TA_CENTER
 from PIL import Image as PILImage, ImageDraw, ImageFont
 import zipfile
 
+
+# --- Safety Guards to avoid NameError after refactor (static profiles build) ---
+try:
+    import streamlit as st  # ensure st exists even if moved
+except Exception:
+    pass
+
+# timekeeper_data: ensure always present
+if 'timekeeper_data' not in st.session_state:
+    st.session_state.timekeeper_data = []
+timekeeper_data = st.session_state.timekeeper_data
+
+# task_activity_desc: pull from CONFIG if present, else empty
+if 'task_activity_desc' not in st.session_state:
+    _cfg = globals().get('CONFIG', {})
+    st.session_state.task_activity_desc = _cfg.get('TASK_ACTIVITY_DESC', {})
+task_activity_desc = st.session_state.task_activity_desc
+
+# matter_number_base: sensible default; can be overwritten later by UI
+if 'matter_number_base' not in st.session_state:
+    st.session_state.matter_number_base = 'MTR-'
+matter_number_base = st.session_state.matter_number_base
+# -----------------------------------------------------------------------------
+
+
 # --- Logging Setup ---
 logging.basicConfig(level=logging.ERROR, format='%(asctime)s - %(levelname)s - %(message)s')
 
@@ -1022,102 +1047,66 @@ tab_objects = st.tabs(tabs)
 with tab_objects[0]:
     st.markdown("<h3 style='color: #1E1E1E;'>Data Sources</h3>", unsafe_allow_html=True)
     
-# --- Invoice Details: two environment pickers + dropdowns ---
-st.markdown("### Entity & Environment")
-
-from ids_store import init_db, fetch_entities, list_envs, get_default, upsert_entity
-init_db()
-
-col_env = st.columns(2)
-with col_env[0]:
-    env_client = st.selectbox("Client Environment", options=["All"] + list_envs("client"), index=(["All"] + list_envs("client")).index("Prod") if "Prod" in list_envs("client") else 0)
-with col_env[1]:
-    env_law = st.selectbox("Law Firm Environment", options=["All"] + list_envs("law_firm"), index=(["All"] + list_envs("law_firm")).index("Prod") if "Prod" in list_envs("law_firm") else 0)
-
-clients = fetch_entities("client", environment=env_client if env_client!="All" else None)
-lawfirms = fetch_entities("law_firm", environment=env_law if env_law!="All" else None)
-
-fmt = lambda r: f"{r['name']} — {r['ext_id']} ({r['environment']})"
-
-# Defaults (independent)
-def_client_id = get_default("client_default")
-cli_index = 0
-if def_client_id:
-    for i, r in enumerate(clients):
-        if r["row_id"] == def_client_id:
-            cli_index = i
-            break
-
-def_lf_id = get_default("law_firm_default")
-lf_index = 0
-if def_lf_id:
-    for i, r in enumerate(lawfirms):
-        if r["row_id"] == def_lf_id:
-            lf_index = i
-            break
-
-col_sel = st.columns(2)
-with col_sel[0]:
-    client_row = st.selectbox("Client", options=clients, index=min(cli_index, max(len(clients)-1,0)), format_func=fmt, key="sel_client")
-with col_sel[1]:
-    law_firm_row = st.selectbox("Law Firm", options=lawfirms, index=min(lf_index, max(len(lawfirms)-1,0)), format_func=fmt, key="sel_lawfirm")
-
-# --- Resolved values for the generator; fall back to manual if lists are empty or selection is None
-# Make sure indexes are in range when lists are non-empty
-cli_index = min(cli_index, len(clients) - 1) if clients else 0
-lf_index  = min(lf_index,  len(lawfirms) - 1) if lawfirms else 0
-
-client_row = st.selectbox(
-    "Client",
-    options=clients,
-    index=cli_index if clients else 0,
-    format_func=lambda r: f"{r['name']} — {r['ext_id']} ({r['environment']})"
-)
-law_firm_row = st.selectbox(
-    "Law Firm",
-    options=lawfirms,
-    index=lf_index if lawfirms else 0,
-    format_func=lambda r: f"{r['name']} — {r['ext_id']} ({r['environment']})"
-)
-
-# Safely resolve IDs; if there’s no selection, show manual input
-if clients and client_row:
-    client_id = client_row.get("ext_id", "")
-else:
-    client_id = st.text_input("Client ID (manual)", value="")
-
-if lawfirms and law_firm_row:
-    law_firm_id = law_firm_row.get("ext_id", "")
-else:
-    law_firm_id = st.text_input("Law Firm ID (manual)", value="")
-
-with st.expander("Quick Add (without leaving this tab)"):
-    kind = st.radio("Type", ["Client","Law Firm"], horizontal=True)
-    q_name = st.text_input("Name", key="qname")
-    q_id = st.text_input("ID", key="qid")
-    q_env = st.text_input("Environment", value=env_client if kind=="Client" else env_law, key="qenv")
-    if st.button("Add"):
-        upsert_entity("client" if kind=="Client" else "law_firm", q_name, q_id, q_env)
-        st.success("Saved. Re-open the dropdown to see it.")
-
-uploaded_timekeeper_file = st.file_uploader("Upload Timekeeper CSV (tk_info.csv)", type="csv")
-timekeeper_data = _load_timekeepers(uploaded_timekeeper_file)
-use_custom_tasks = st.checkbox("Use Custom Line Item Details?", value=True)
-uploaded_custom_tasks_file = None
-if use_custom_tasks:
-        uploaded_custom_tasks_file = st.file_uploader("Upload Custom Line Items CSV (custom_details.csv)", type="csv")
-task_activity_desc = CONFIG['DEFAULT_TASK_ACTIVITY_DESC']
-if use_custom_tasks and uploaded_custom_tasks_file:
-        custom_tasks_data = _load_custom_task_activity_data(uploaded_custom_tasks_file)
-        if custom_tasks_data:
-            task_activity_desc = custom_tasks_data
-
 with tab_objects[1]:
     st.markdown("<h2 style='color: #1E1E1E;'>Invoice Details</h2>", unsafe_allow_html=True)
     st.markdown("<h3 style='color: #1E1E1E;'>Billing Information</h3>", unsafe_allow_html=True)
-    client_id = st.text_input("Client ID:", CONFIG['DEFAULT_CLIENT_ID'], help="Format: XX-XXXXXXX (e.g., 02-4388252)")
-    law_firm_id = st.text_input("Law Firm ID:", CONFIG['DEFAULT_LAW_FIRM_ID'], help="Format: XX-XXXXXXX (e.g., 02-1234567)")
-    matter_number_base = st.text_input("Matter Number:", "2025-XXXXXX")
+            
+
+# ---------- Static Billing ID Profiles (edit in code) ----------
+    ID_PROFILES_STR = """
+    Onit ELM|A Onit Inc.|02-4388252|Nelson and Murdock|02-1234567,
+    SimpleLegal|Penguin LLC|C004|JDL|JDL001,
+    Unity|Unity Demo|uniti-demo|Gold USA|Gold USA
+    """.strip()
+
+    def _parse_profiles(s: str):
+        out = []
+        for raw in [chunk.strip() for chunk in s.split(",") if chunk.strip()]:
+            parts = [p.strip() for p in raw.split("|")]
+            if len(parts) != 5:
+                continue
+            env, c_name, c_id, lf_name, lf_id = parts
+            out.append({
+                "environment": env,
+                "client_name": c_name,
+                "client_id": c_id,
+                "law_firm_name": lf_name,
+                "law_firm_id": lf_id,
+            })
+        return out
+
+    PROFILES = _parse_profiles(ID_PROFILES_STR)
+
+    st.markdown("<h3 style='color: #1E1E1E;'>Billing Profiles</h3>", unsafe_allow_html=True)
+    if not PROFILES:
+        st.error("No billing ID profiles are defined. Edit ID_PROFILES_STR.")
+        client_name_res = st.text_input("Client Name", value="")
+        client_id = st.text_input("Client ID", value="")
+        law_firm_name_res = st.text_input("Law Firm Name", value="")
+        law_firm_id = st.text_input("Law Firm ID", value="")
+    else:
+        env_options = [p["environment"] for p in PROFILES]
+        env_index = st.session_state.get("billing_env_index", 0)
+        env_index = min(env_index, len(env_options)-1)
+        selected_env = st.selectbox("Environment / Profile", env_options, index=env_index, key="billing_env_select")
+        st.session_state["billing_env_index"] = env_options.index(selected_env)
+
+        defaults = next(p for p in PROFILES if p["environment"] == selected_env)
+
+        st.markdown("<h4 style='color: #1E1E1E;'>Client / Law Firm IDs</h4>", unsafe_allow_html=True)
+        use_override = st.checkbox("Override values for this invoice", value=False, help="Edit IDs while keeping the profile intact.")
+        c1, c2 = st.columns(2)
+        with c1:
+            client_name_res = st.text_input("Client Name", value=defaults["client_name"], disabled=not use_override, key="override_client_name")
+            client_id_input = st.text_input("Client ID", value=defaults["client_id"], disabled=not use_override, key="override_client_id")
+        with c2:
+            law_firm_name_res = st.text_input("Law Firm Name", value=defaults["law_firm_name"], disabled=not use_override, key="override_law_firm_name")
+            law_firm_id_input = st.text_input("Law Firm ID", value=defaults["law_firm_id"], disabled=not use_override, key="override_law_firm_id")
+
+        client_id = client_id_input if use_override else defaults["client_id"]
+        law_firm_id = law_firm_id_input if use_override else defaults["law_firm_id"]
+        st.caption(f"Using: **{selected_env}** — Client ID: `{client_id}` · Law Firm ID: `{law_firm_id}`")
+    st.text_input("Matter Number:", "2025-XXXXXX")
     invoice_number_base = st.text_input("Invoice Number (Base):", "2025MMM-XXXXXX")
     LEDES_OPTIONS = ["1998B", "XML 2.1"]
     ledes_version = st.selectbox(
@@ -1456,90 +1445,3 @@ if generate_button:
                         )
             status.update(label="Invoice generation complete!", state="complete")
 
-# --- Admin tab: ID Directory (Clients & Law Firms) ---
-with tab_objects[tabs.index("Admin")]:
-    st.markdown("<h2 style='color: #1E1E1E;'>Admin</h2>", unsafe_allow_html=True)
-    st.caption("Manage ID directory (Name, ID, Environment) and defaults.")
-
-    from ids_store import init_db, fetch_entities, upsert_entity, delete_entity, list_envs, get_default, set_default
-    init_db()
-
-    colA, colB = st.columns(2)
-
-    # LEFT: Clients
-    with colA:
-        st.markdown("**Manage Clients**")
-        envs_c = ["All"] + list_envs("client")
-        env_filter_c = st.selectbox("Filter Environment (Clients)", envs_c, key="adm_env_c")
-        rows_c = fetch_entities("client", environment=env_filter_c if env_filter_c!="All" else None)
-        st.dataframe([{k:v for k,v in r.items() if k!='row_id'} for r in rows_c], use_container_width=True, hide_index=True)
-
-        with st.form("add_client"):
-            st.write("Add / Edit Client")
-            c_name = st.text_input("Name")
-            c_id = st.text_input("ID (as used in LEDES)")
-            c_env = st.text_input("Environment", value="Prod")
-            c_rowid = st.number_input("Row ID (leave 0 to add new)", min_value=0, step=1)
-            c_submit = st.form_submit_button("Save Client")
-            if c_submit and c_name and c_id:
-                rid = upsert_entity("client", c_name, c_id, c_env, row_id=(int(c_rowid) or None))
-                st.success(f"Saved client row #{rid}")
-
-        del_id = st.number_input("Delete Client (Row ID)", min_value=0, step=1, key="del_c")
-        if st.button("Delete Client") and del_id:
-            delete_entity(int(del_id))
-            st.warning(f"Deleted client row #{int(del_id)}")
-
-    # RIGHT: Law Firms
-    with colB:
-        st.markdown("**Manage Law Firms**")
-        envs_l = ["All"] + list_envs("law_firm")
-        env_filter_l = st.selectbox("Filter Environment (Law Firms)", envs_l, key="adm_env_l")
-        rows_l = fetch_entities("law_firm", environment=env_filter_l if env_filter_l!="All" else None)
-        st.dataframe([{k:v for k,v in r.items() if k!='row_id'} for r in rows_l], use_container_width=True, hide_index=True)
-
-        with st.form("add_lawfirm"):
-            st.write("Add / Edit Law Firm")
-            lf_name = st.text_input("Name ", key="lfn")
-            lf_id = st.text_input("ID (as used in LEDES)", key="lfi")
-            lf_env = st.text_input("Environment", value="Prod", key="lfe")
-            lf_rowid = st.number_input("Row ID (leave 0 to add new)", min_value=0, step=1, key="lfr")
-            lf_submit = st.form_submit_button("Save Law Firm")
-            if lf_submit and lf_name and lf_id:
-                rid = upsert_entity("law_firm", lf_name, lf_id, lf_env, row_id=(int(lf_rowid) or None))
-                st.success(f"Saved law firm row #{rid}")
-
-        del_id_lf = st.number_input("Delete Law Firm (Row ID)", min_value=0, step=1, key="del_lf")
-        if st.button("Delete Law Firm") and del_id_lf:
-            delete_entity(int(del_id_lf))
-            st.warning(f"Deleted law firm row #{int(del_id_lf)}")
-
-    st.divider()
-    st.markdown("**Defaults**")
-    rows_c_all = fetch_entities("client")
-    rows_l_all = fetch_entities("law_firm")
-    fmt = lambda r: f"{r['name']} — {r['ext_id']} ({r['environment']})"
-
-    def_idx_c = 0
-    cur_def_c = get_default("client_default")
-    if cur_def_c:
-        for i, r in enumerate(rows_c_all):
-            if r["row_id"] == cur_def_c:
-                def_idx_c = i
-                break
-    sel_c = st.selectbox("Default Client", options=rows_c_all, index=min(def_idx_c, max(len(rows_c_all)-1,0)), format_func=fmt, key="admin_def_client")
-    if st.button("Set Default Client"):
-        set_default("client_default", sel_c["row_id"])
-        st.success("Default Client saved.")
-
-    def_idx_l = 0
-    cur_def_l = get_default("law_firm_default")
-    if cur_def_l:
-        for i, r in enumerate(rows_l_all):
-            if r["row_id"] == cur_def_l:
-                def_idx_l = i
-                break
-    sel_l = st.selectbox("Default Law Firm", options=rows_l_all, index=min(def_idx_l, max(len(rows_l_all)-1,0)), format_func=fmt, key="admin_def_lawfirm")
-    if st.button("Set Default Law Firm"):
-        set_default("law_firm_default", sel_l["row_id"])
-        st.success("Default Law Firm saved.")
