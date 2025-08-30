@@ -1358,12 +1358,8 @@ if timekeeper_data is None:
 if billing_start_date >= billing_end_date:
     st.error("Billing start date must be before end date.")
     is_valid_input = False
-if not _is_valid_client_id(client_id):
-    st.error("Client ID must be in format XX-XXXXXXX (e.g., 02-4388252).")
-    is_valid_input = False
-if not _is_valid_law_firm_id(law_firm_id):
-    st.error("Law Firm ID must be in format XX-XXXXXXX (e.g., 02-1234567).")
-    is_valid_input = False
+if not _is_valid_client_id(client_id):is_valid_input = False
+if not _is_valid_law_firm_id(law_firm_id):is_valid_input = False
 if st.session_state.send_email and not recipient_email:
     st.error("Please provide a recipient email address.")
     is_valid_input = False
