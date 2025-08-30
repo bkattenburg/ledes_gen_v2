@@ -1,3 +1,4 @@
+from __future__ import annotations
 import streamlit as st
 import os, sys
 sys.path.append(os.path.dirname(__file__))
@@ -174,7 +175,7 @@ def _calculate_max_expenses(billing_start_date=None, billing_end_date=None, num_
     return max(1, min(cap, nd * 6))
 
 
-def _find_timekeeper_by_name(timekeepers: List[Dict], name: str) -> Optional[Dict]:
+def _find_timekeeper_by_name(timekeepers: list[Dict], name: str) -> Dict | None:
     """Find a timekeeper by name (case-insensitive)."""
     if not timekeepers:
         return None
@@ -183,7 +184,7 @@ def _find_timekeeper_by_name(timekeepers: List[Dict], name: str) -> Optional[Dic
             return tk
     return None
 
-def _force_timekeeper_on_row(row: Dict, forced_name: str, timekeepers: List[Dict]) -> Dict:
+def _force_timekeeper_on_row(row: Dict, forced_name: str, timekeepers: list[Dict]) -> Dict:
     """Assign timekeeper details to a row if applicable."""
     if row.get("EXPENSE_CODE"):
         return row
@@ -222,7 +223,7 @@ def _is_valid_law_firm_id(law_firm_id: str) -> bool:
     """Law Firm ID is considered valid if it is a non-empty string."""
     return bool(str(law_firm_id).strip())
 
-def _calculate_max_fees(timekeeper_data: Optional[List[Dict]], billing_start_date: dt.date, billing_end_date: dt.date, max_daily_hours: int) -> int:
+def _calculate_max_fees(timekeeper_data: list[Dict | None], billing_start_date: dt.date, billing_end_date: dt.date, max_daily_hours: int) -> int:
     """Calculate maximum feasible fee lines based on timekeeper data and billing period."""
     if not timekeeper_data:
         return 1
@@ -232,7 +233,7 @@ def _calculate_max_fees(timekeeper_data: Optional[List[Dict]], billing_start_dat
     max_lines = int((num_timekeepers * num_days * max_daily_hours) / 0.5)
     return max(1, min(200, max_lines))
 
-def _load_timekeepers(uploaded_file: Optional[Any]) -> Optional[List[Dict]]:
+def _load_timekeepers(uploaded_file: Any | None) -> list[Dict | None]:
     """Load timekeepers from CSV file."""
     if uploaded_file is None:
         return None
@@ -248,7 +249,7 @@ def _load_timekeepers(uploaded_file: Optional[Any]) -> Optional[List[Dict]]:
         logging.error(f"Timekeeper load error: {e}")
         return None
 
-def _load_custom_task_activity_data(uploaded_file: Optional[Any]) -> Optional[List[Tuple[str, str, str]]]:
+def _load_custom_task_activity_data(uploaded_file: Any | None) -> list[tuple[str, str, str | None]]:
     """Load custom task/activity data from CSV."""
     if uploaded_file is None:
         return None
@@ -270,7 +271,7 @@ def _load_custom_task_activity_data(uploaded_file: Optional[Any]) -> Optional[Li
         logging.error(f"Custom tasks load error: {e}")
         return None
 
-def _create_ledes_line_1998b(row: Dict, line_no: int, inv_total: float, bill_start: dt.date, bill_end: dt.date, invoice_number: str, matter_number: str) -> List[str]:
+def _create_ledes_line_1998b(row: Dict, line_no: int, inv_total: float, bill_start: dt.date, bill_end: dt.date, invoice_number: str, matter_number: str) -> list[str]:
     """Create a single LEDES 1998B line."""
     try:
         date_obj = dt.dt.datetime.strptime(row["LINE_ITEM_DATE"], "%Y-%m-%d").date()
@@ -316,7 +317,7 @@ def _create_ledes_line_1998b(row: Dict, line_no: int, inv_total: float, bill_sta
         logging.error(f"Error creating LEDES line: {e}")
         return []
 
-def _create_ledes_1998b_content(rows: List[Dict], inv_total: float, bill_start: dt.date, bill_end: dt.date, invoice_number: str, matter_number: str, is_first_invoice: bool = True) -> str:
+def _create_ledes_1998b_content(rows: list[Dict], inv_total: float, bill_start: dt.date, bill_end: dt.date, invoice_number: str, matter_number: str, is_first_invoice: bool = True) -> str:
     """Generate LEDES 1998B content from invoice rows."""
     lines = []
     if is_first_invoice:
@@ -334,7 +335,7 @@ def _create_ledes_1998b_content(rows: List[Dict], inv_total: float, bill_start: 
             lines.append("|".join(map(str, line)) + "[]")
     return "\n".join(lines)
 
-def _generate_fees(fee_count: int, timekeeper_data: List[Dict], billing_start_date: dt.date, billing_end_date: dt.date, task_activity_desc: List[Tuple[str, str, str]], major_task_codes: set, max_hours_per_tk_per_day: int, faker_instance: Faker, client_id: str, law_firm_id: str, invoice_desc: str) -> List[Dict]:
+def _generate_fees(fee_count: int, timekeeper_data: list[Dict], billing_start_date: dt.date, billing_end_date: dt.date, task_activity_desc: list[tuple[str, str, str]], major_task_codes: set, max_hours_per_tk_per_day: int, faker_instance: Faker, client_id: str, law_firm_id: str, invoice_desc: str) -> list[Dict]:
     """Generate fee line items for an invoice."""
     rows = []
     delta = billing_end_date - billing_start_date
@@ -389,7 +390,7 @@ def _generate_expenses(
     client_id: str,
     law_firm_id: str,
     invoice_desc: str
-) -> List[Dict]:
+) -> list[Dict]:
     """Generate expense line items for an invoice with realistic amounts."""
 
     # --- normalize dates (accepts date, datetime, or common string formats) ---
@@ -432,7 +433,7 @@ def _generate_expenses(
     except Exception:
         tel_min, tel_max = 5.0, 15.0
 
-    rows: List[Dict] = []
+    rows: list[Dict] = []
 
     # --- Always include some Copying (E101) if we have at least 1 expense slot ---
     e101_actual_count = 0
@@ -512,7 +513,7 @@ def _generate_expenses(
 
     return rows
     
-def _generate_invoice_data(fee_count: int, expense_count: int, timekeeper_data: List[Dict], client_id: str, law_firm_id: str, invoice_desc: str, billing_start_date: dt.date, billing_end_date: dt.date, task_activity_desc: List[Tuple[str, str, str]], major_task_codes: set, max_hours_per_tk_per_day: int, include_block_billed: bool, faker_instance: Faker) -> Tuple[List[Dict], float]:
+def _generate_invoice_data(fee_count: int, expense_count: int, timekeeper_data: list[Dict], client_id: str, law_firm_id: str, invoice_desc: str, billing_start_date: dt.date, billing_end_date: dt.date, task_activity_desc: list[tuple[str, str, str]], major_task_codes: set, max_hours_per_tk_per_day: int, include_block_billed: bool, faker_instance: Faker) -> tuple[list[Dict], float]:
     """Generate invoice data with fees and expenses."""
     rows = []
     rows.extend(_generate_fees(fee_count, timekeeper_data, billing_start_date, billing_end_date, task_activity_desc, major_task_codes, max_hours_per_tk_per_day, faker_instance, client_id, law_firm_id, invoice_desc))
@@ -544,7 +545,7 @@ def _generate_invoice_data(fee_count: int, expense_count: int, timekeeper_data: 
 
     return rows, total_amount
 
-def _ensure_mandatory_lines(rows: List[Dict], timekeeper_data: List[Dict], invoice_desc: str, client_id: str, law_firm_id: str, billing_start_date: dt.date, billing_end_date: dt.date, selected_items: List[str]) -> List[Dict]:
+def _ensure_mandatory_lines(rows: list[Dict], timekeeper_data: list[Dict], invoice_desc: str, client_id: str, law_firm_id: str, billing_start_date: dt.date, billing_end_date: dt.date, selected_items: list[str]) -> list[Dict]:
     """Ensure mandatory line items are included."""
     delta = billing_end_date - billing_start_date
     num_days = max(1, delta.days + 1)
@@ -582,7 +583,7 @@ def _validate_image_bytes(image_bytes: bytes) -> bool:
     except Exception:
         return False
 
-def _get_logo_bytes(uploaded_logo: Optional[Any], law_firm_id: str, use_custom: bool) -> bytes:
+def _get_logo_bytes(uploaded_logo: Any | None, law_firm_id: str, use_custom: bool) -> bytes:
     """Get logo bytes from uploaded file or default path."""
     if use_custom and uploaded_logo:
         try:
@@ -769,7 +770,7 @@ def _create_pdf_invoice(df: pd.DataFrame, total_amount: float, invoice_number: s
     return buffer
 
 
-def _create_receipt_image(expense_row: dict, faker_instance: Faker) -> Tuple[str, io.BytesIO]:
+def _create_receipt_image(expense_row: dict, faker_instance: Faker) -> tuple[str, io.BytesIO]:
     """Enhanced realistic receipt generator (see chat notes for details)."""
     width, height = 600, 950
     bg = (252, 252, 252)
@@ -1039,7 +1040,7 @@ def _create_receipt_image(expense_row: dict, faker_instance: Faker) -> Tuple[str
 
     filename = f"Receipt_{exp_code}_{line_item_date.strftime('%Y%m%d')}.png"
     return filename, img_buffer
-def _customize_email_body(matter_number: str, invoice_number: str) -> Tuple[str, str]:
+def _customize_email_body(matter_number: str, invoice_number: str) -> tuple[str, str]:
     """Customize email subject and body with matter and invoice number."""
     subject = st.session_state.get("email_subject", f"LEDES Invoice for {matter_number} (Invoice #{invoice_number})")
     body = st.session_state.get("email_body", f"Please find the attached invoice files for matter {matter_number}.\n\nBest regards,\nYour Law Firm")
@@ -1047,7 +1048,7 @@ def _customize_email_body(matter_number: str, invoice_number: str) -> Tuple[str,
     body = body.format(matter_number=matter_number, invoice_number=invoice_number)
     return subject, body
 
-def _send_email_with_attachment(recipient_email: str, subject: str, body: str, attachments: List[Tuple[str, bytes]]) -> bool:
+def _send_email_with_attachment(recipient_email: str, subject: str, body: str, attachments: list[tuple[str, bytes]]) -> bool:
     """Send email with attachments."""
     try:
         sender_email = st.secrets.email.email_from
