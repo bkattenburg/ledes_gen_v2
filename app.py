@@ -71,6 +71,20 @@ def _rows_for_email(fallback_args: dict | None = None):
         pass
     if fallback_args:
         rows, total_amount = _generate_invoice_data(**fallback_args)
+
+        # Persist the generated payload for later email/download
+
+        try:
+
+            import streamlit as st
+
+            st.session_state.generated_rows = rows
+
+            st.session_state.generated_total = float(total_amount) if isinstance(total_amount, (int, float)) else total_amount
+
+        except Exception:
+
+            pass
         meta = {
             'client_id': fallback_args.get('client_id'),
             'law_firm_id': fallback_args.get('law_firm_id'),
@@ -300,7 +314,7 @@ def _load_custom_task_activity_data(uploaded_file: Any | None) -> list[tuple[str
 def _create_ledes_line_1998b(row: Dict, line_no: int, inv_total: float, bill_start: dt.date, bill_end: dt.date, invoice_number: str, matter_number: str) -> list[str]:
     """Create a single LEDES 1998B line."""
     try:
-        date_obj = dt.dt.datetime.strptime(row["LINE_ITEM_DATE"], "%Y-%m-%d").date()
+        date_obj = dt.dt.dt.datetime.strptime(row["LINE_ITEM_DATE"], "%Y-%m-%d").date()
         hours = float(row["HOURS"])
         rate = float(row["RATE"])
         line_total = float(row["LINE_ITEM_TOTAL"])
@@ -428,10 +442,10 @@ def _generate_expenses(
         if isinstance(x, str):
             for fmt in ("%Y-%m-%d", "%m/%d/%Y"):
                 try:
-                    return dt.datetime.strptime(x, fmt).date()
+                    return dt.dt.datetime.strptime(x, fmt).date()
                 except Exception:
                     pass
-        return dt.datetime.today().date()
+        return dt.dt.datetime.today().date()
 
     start = _to_date(billing_start_date)
     end   = _to_date(billing_end_date)
@@ -910,9 +924,9 @@ def _create_receipt_image(expense_row: dict, faker_instance: Faker) -> tuple[str
     cashier = faker_instance.first_name()
 
     try:
-        line_item_date = dt.dt.datetime.strptime(expense_row["LINE_ITEM_DATE"], "%Y-%m-%d").date()
+        line_item_date = dt.dt.dt.datetime.strptime(expense_row["LINE_ITEM_DATE"], "%Y-%m-%d").date()
     except Exception:
-        line_item_date = dt.dt.datetime.today().date()
+        line_item_date = dt.dt.dt.datetime.today().date()
     exp_code = str(expense_row.get("EXPENSE_CODE", "")).strip()
     desc = str(expense_row.get("DESCRIPTION","")).strip() or "Item"
     total_amount = float(expense_row.get("LINE_ITEM_TOTAL", 0.0))
@@ -1481,6 +1495,19 @@ if generate_button:
 
                     st.session_state.generated_total = float(total_amount) if isinstance(total_amount, (int, float)) else total_amount
 
+                except Exception:
+
+                    pass
+                # Persist the generated payload for later email/download
+
+                try:
+
+                    import streamlit as st
+
+                    st.session_state.generated_rows = rows
+
+                    st.session_state.generated_total = float(total_amount) if isinstance(total_amount, (int, float)) else total_amount
+
                     st.session_state.generated_invoice_meta = {
 
                         "client_id": locals().get("client_id"),
@@ -1635,5 +1662,23 @@ with tab_objects[tabs.index("Data Sources")]:
 # use_cli = st.session_state.get("use_custom_line_items", True) and bool(st.session_state.get("custom_line_items"))
 import datetime as dt
 from typing import Any, Dict, List, Optional, Tuple
+
+
+def _coerce_date_str(value) -> str:
+    """Return an ISO date string YYYY-MM-DD from varied inputs."""
+    try:
+        if isinstance(value, dt.date) and not isinstance(value, dt.datetime):
+            return value.strftime("%Y-%m-%d")
+        if isinstance(value, dt.datetime):
+            return value.date().strftime("%Y-%m-%d")
+        s = str(value).strip()
+        for fmt in ("%Y-%m-%d", "%m/%d/%Y", "%Y/%m/%d"):
+            try:
+                return dt.datetime.strptime(s, fmt).date().strftime("%Y-%m-%d")
+            except Exception:
+                pass
+        return dt.date.today().strftime("%Y-%m-%d")
+    except Exception:
+        return dt.date.today().strftime("%Y-%m-%d")
 
 st.info("Tip: Fee controls are enabled once TK.csv is uploaded. You can still generate expenses without timekeepers.")
