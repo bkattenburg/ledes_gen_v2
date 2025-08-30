@@ -25,21 +25,22 @@ from PIL import Image as PILImage, ImageDraw, ImageFont
 import zipfile
 
 
+
 # --- Safety Guards to avoid NameError after refactor (static profiles build) ---
 try:
     import streamlit as st  # ensure st exists even if moved
 except Exception:
     pass
 
-# timekeeper_data: ensure always present
+# timekeeper_data: None means "not loaded"
 if 'timekeeper_data' not in st.session_state:
-    st.session_state.timekeeper_data = []
+    st.session_state.timekeeper_data = None
 timekeeper_data = st.session_state.timekeeper_data
 
-# task_activity_desc: pull from CONFIG if present, else empty
+# task_activity_desc: prefer DEFAULT_TASK_ACTIVITY_DESC
 if 'task_activity_desc' not in st.session_state:
     _cfg = globals().get('CONFIG', {})
-    st.session_state.task_activity_desc = _cfg.get('TASK_ACTIVITY_DESC', {})
+    st.session_state.task_activity_desc = _cfg.get('DEFAULT_TASK_ACTIVITY_DESC', {})
 task_activity_desc = st.session_state.task_activity_desc
 
 # matter_number_base: sensible default; can be overwritten later by UI
@@ -47,6 +48,25 @@ if 'matter_number_base' not in st.session_state:
     st.session_state.matter_number_base = 'MTR-'
 matter_number_base = st.session_state.matter_number_base
 # -----------------------------------------------------------------------------
+
+
+
+# --- Tax rules ---
+TAX_EXEMPT = {
+    "E110","E109","E108","E120","E122","E118","E121","E119","E112","E113","E114"
+}
+DEFAULT_TAX_RATE = 0.085
+def slider_or_fixed(label, min_value, max_value, *, value=None, step=1, help=None, format=None):
+    """Uses a slider when there's a range; falls back to a fixed number_input when not."""
+    min_value = int(min_value); max_value = int(max_value)
+    if max_value <= min_value:
+        fixed = max(min_value, max_value)
+        return st.number_input(label, min_value=fixed, max_value=fixed, value=fixed, step=step, help=help)
+    if value is None:
+        value = min_value
+    value = max(min_value, min(int(value), int(max_value)))
+    return st.slider(label, min_value=min_value, max_value=max_value, value=value, step=step, help=help, format=format)
+
 
 
 # --- Logging Setup ---
@@ -128,6 +148,32 @@ EXPENSE_DESCRIPTIONS = list(CONFIG['EXPENSE_CODES'].keys())
 OTHER_EXPENSE_DESCRIPTIONS = [desc for desc in EXPENSE_DESCRIPTIONS if CONFIG['EXPENSE_CODES'][desc] != "E101"]
 
 # --- Helper Functions ---
+
+# --- Utility: compute a safe upper bound for expense lines ---
+def _calculate_max_expenses(billing_start_date=None, billing_end_date=None, num_days=None, config=None):
+    from datetime import date, datetime
+    try:
+        if num_days is None:
+            start = billing_start_date
+            end = billing_end_date or billing_start_date
+            if isinstance(start, datetime):
+                start = start.date()
+            if isinstance(end, datetime):
+                end = end.date()
+            if isinstance(start, date) and isinstance(end, date):
+                nd = (end - start).days + 1
+            else:
+                nd = 1
+        else:
+            nd = int(num_days)
+    except Exception:
+        nd = 1
+    nd = max(1, int(nd))
+    cap = int((config or {}).get('expense_lines_cap', 120))
+    # heuristic: up to 6 expense lines per day, clamped by cap
+    return max(1, min(cap, nd * 6))
+
+
 def _find_timekeeper_by_name(timekeepers: List[Dict], name: str) -> Optional[Dict]:
     """Find a timekeeper by name (case-insensitive)."""
     if not timekeepers:
@@ -809,6 +855,14 @@ def _create_receipt_image(expense_row: dict, faker_instance: Faker) -> Tuple[str
 
     items = pick_items(exp_code, desc, total_amount)
     subtotal = round(sum(x[3] for x in items), 2)
+    # Compute tax per new rules
+    if exp_code in TAX_EXEMPT:
+        tax_rate = 0.0
+    elif exp_code == "E111":
+        tax_rate = DEFAULT_TAX_RATE
+    else:
+        tax_rate = DEFAULT_TAX_RATE if subtotal > 0 else 0.0
+    tax = round(subtotal * tax_rate, 2)
 
     tax_rate = TAX_MAP.get(exp_code, 0.085 if subtotal>0 else 0.0)
     tax = round(subtotal * tax_rate, 2)
@@ -1143,13 +1197,7 @@ with tab_objects[2]:
     else:
         max_fees = _calculate_max_fees(timekeeper_data, billing_start_date, billing_end_date, 16)
         st.caption(f"Maximum fee lines allowed: {max_fees} (based on timekeepers and billing period)")
-        fees = st.slider(
-            "Number of Fee Line Items",
-            min_value=1,
-            max_value=max_fees,
-            value=min(20, max_fees),
-            format="%d"
-        )
+        fees = slider_or_fixed("Number of Fee Line Items", 1, max_fees, value=min(20, max_fees), step=1, format="%d")
         st.markdown("<h3 style='color: #1E1E1E;'>Expense Settings</h3>", unsafe_allow_html=True)
         with st.expander("Adjust Expense Amounts", expanded=False):
             st.number_input(
@@ -1177,13 +1225,29 @@ with tab_objects[2]:
                 help="Per-page rate used for E101 Copying expenses."
             )
         st.caption("Number of expense line items to generate")
-        expenses = st.slider(
-            "Number of Expense Line Items",
-            min_value=0,
-            max_value=50,
-            value=5,
-            format="%d"
-        )
+
+    # Compute a safe num_days and max_expenses before rendering the control
+    from datetime import date, datetime
+    _start = billing_start_date if 'billing_start_date' in locals() else None
+    _end = billing_end_date if 'billing_end_date' in locals() else _start
+    if isinstance(_start, datetime): _start = _start.date()
+    if isinstance(_end, datetime): _end = _end.date()
+    try:
+        _nd = (_end - _start).days + 1 if _start and _end else 1
+    except Exception:
+        _nd = 1
+    _nd = max(1, int(_nd))
+    num_days = _nd  # keep for downstream use
+
+    max_expenses = _calculate_max_expenses(
+        billing_start_date=billing_start_date if 'billing_start_date' in locals() else None,
+        billing_end_date=billing_end_date if 'billing_end_date' in locals() else None,
+        num_days=num_days,
+        config=CONFIG if 'CONFIG' in globals() else {}
+    )
+    max_expenses = max(1, int(max_expenses))
+
+    expenses = slider_or_fixed("Number of Expense Line Items", 1, max_expenses, value=min(10, max_expenses), step=1)
     max_daily_hours = st.number_input("Max Daily Timekeeper Hours:", min_value=1, max_value=24, value=16, step=1)
     
     if spend_agent:
@@ -1195,7 +1259,7 @@ with tab_objects[2]:
 
 with tab_objects[3]:
     st.markdown("<h2 style='color: #1E1E1E;'>Output</h2>", unsafe_allow_html=True)
- #1E1E1E;'>Output Settings</h3>", unsafe_allow_html=True)
+    st.markdown("<h3 style='color: #1E1E1E;'>Output Settings</h3>", unsafe_allow_html=True)
     include_block_billed = st.checkbox("Include Block Billed Line Items", value=True)
     include_pdf = st.checkbox("Include PDF Invoice", value=False)
     
