@@ -1520,8 +1520,8 @@ with tab_objects[tabs.index("Data Sources")]:
                 st.error(f"Failed to read TK.csv: {e}")
 
     with st.expander("Custom Line Items CSV (optional)", expanded=True):
-    st.caption("Provide preset fee/expense rows to use or mix in.")
-    li_file = st.file_uploader("Custom Line Items CSV", type=["csv"], key="li_csv_upl")
+        st.caption("Provide preset fee/expense rows to use or mix in.")
+        li_file = st.file_uploader("Custom Line Items CSV", type=["csv"], key="li_csv_upl")
 
     if li_file is not None:
         try:
