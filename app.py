@@ -1519,7 +1519,7 @@ with tab_objects[tabs.index("Data Sources")]:
             except Exception as e:
                 st.error(f"Failed to read TK.csv: {e}")
 
-    with st.expander("Custom Line Items CSV (optional)", expanded=False):
+    with st.expander("Custom Line Items CSV (optional)", expanded=True):
     # NEW: toggle appears above the uploader; default is TRUE
         st.checkbox("Use Custom Line Items?", value=True, key="use_custom_line_items")
     
