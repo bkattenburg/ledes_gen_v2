@@ -10,6 +10,7 @@ import logging
 import re
 import smtplib
 from typing import Optional, List, Dict, Any, Tuple
+from datetime import datetime, date, timedelta
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from email.mime.application import MIMEApplication
@@ -384,20 +385,47 @@ def _generate_fees(fee_count: int, timekeeper_data: List[Dict], billing_start_da
 
 
 
-def _generate_expenses(expense_count: int, billing_start_date: datetime.date, billing_end_date: datetime.date, client_id: str, law_firm_id: str, invoice_desc: str) -> List[Dict]:
+def _generate_expenses(
+    expense_count: int,
+    billing_start_date: date,
+    billing_end_date: date,
+    client_id: str,
+    law_firm_id: str,
+    invoice_desc: str
+) -> List[Dict]:
     """Generate expense line items for an invoice with realistic amounts."""
-    rows: List[Dict] = []
-    delta = billing_end_date - billing_start_date
+
+    # --- normalize dates (accepts date, datetime, or common string formats) ---
+    def _to_date(x) -> date:
+        if isinstance(x, date) and not isinstance(x, datetime):
+            return x
+        if isinstance(x, datetime):
+            return x.date()
+        if isinstance(x, str):
+            for fmt in ("%Y-%m-%d", "%m/%d/%Y"):
+                try:
+                    return datetime.strptime(x, fmt).date()
+                except Exception:
+                    pass
+        return datetime.today().date()
+
+    start = _to_date(billing_start_date)
+    end   = _to_date(billing_end_date)
+
+    delta = end - start
     num_days = max(1, delta.days + 1)
-    # Read tunable expense settings from UI
+
+    # --- tunable expense settings from UI (with safe fallbacks) ---
     try:
         import streamlit as st
     except Exception:
         st = None
+
     mileage_rate_cfg = float(st.session_state.get("mileage_rate_e109", 0.65)) if st else 0.65
     travel_rng = st.session_state.get("travel_range_e110", (100.0, 800.0)) if st else (100.0, 800.0)
-    tel_rng = st.session_state.get("telephone_range_e105", (5.0, 15.0)) if st else (5.0, 15.0)
+    tel_rng    = st.session_state.get("telephone_range_e105", (5.0, 15.0)) if st else (5.0, 15.0)
     copying_rate = float(st.session_state.get("copying_rate_e101", 0.24)) if st else 0.24
+
     try:
         travel_min, travel_max = float(travel_rng[0]), float(travel_rng[1])
     except Exception:
@@ -407,58 +435,70 @@ def _generate_expenses(expense_count: int, billing_start_date: datetime.date, bi
     except Exception:
         tel_min, tel_max = 5.0, 15.0
 
+    rows: List[Dict] = []
 
-    # Always include some Copying (E101)
-    e101_actual_count = random.randint(1, min(3, expense_count))
+    # --- Always include some Copying (E101) if we have at least 1 expense slot ---
+    e101_actual_count = 0
+    if expense_count > 0:
+        e101_actual_count = random.randint(1, min(3, expense_count))
+
     for _ in range(e101_actual_count):
         description = "Copying"
         expense_code = "E101"
-        hours = random.randint(50, 300)  # number of pages
-        rate = round(copying_rate, 2)  # per-page
+        pages = random.randint(50, 300)     # number of pages
+        rate  = round(copying_rate, 2)      # per-page
         random_day_offset = random.randint(0, num_days - 1)
-        line_item_date = billing_start_date + datetime.timedelta(days=random_day_offset)
-        line_item_total = round(hours * rate, 2)
+        line_item_date = start + timedelta(days=random_day_offset)
+        line_item_total = round(pages * rate, 2)
         row = {
             "INVOICE_DESCRIPTION": invoice_desc, "CLIENT_ID": client_id, "LAW_FIRM_ID": law_firm_id,
             "LINE_ITEM_DATE": line_item_date.strftime("%Y-%m-%d"), "TIMEKEEPER_NAME": "",
             "TIMEKEEPER_CLASSIFICATION": "", "TIMEKEEPER_ID": "",
             "TASK_CODE": "", "ACTIVITY_CODE": "", "EXPENSE_CODE": expense_code, "DESCRIPTION": description,
-            "HOURS": hours, "RATE": rate, "LINE_ITEM_TOTAL": line_item_total
+            "HOURS": pages, "RATE": rate, "LINE_ITEM_TOTAL": line_item_total
         }
         rows.append(row)
 
-    # Remaining expenses with category-aware amounts
-    for _ in range(max(0, expense_count - e101_actual_count)):
+    # --- Remaining expenses with category-aware amounts ---
+    # Requires OTHER_EXPENSE_DESCRIPTIONS and CONFIG['EXPENSE_CODES'] to exist in your module.
+    remaining = max(0, expense_count - e101_actual_count)
+    for _ in range(remaining):
         description = random.choice(OTHER_EXPENSE_DESCRIPTIONS)
         expense_code = CONFIG['EXPENSE_CODES'][description]
         random_day_offset = random.randint(0, num_days - 1)
-        line_item_date = billing_start_date + datetime.timedelta(days=random_day_offset)
+        line_item_date = start + timedelta(days=random_day_offset)
 
         if expense_code == "E109":  # Local travel (mileage)
             miles = random.randint(5, 50)
             hours = miles  # store miles in HOURS
-            rate = mileage_rate_cfg  # mileage rate from UI
+            rate = mileage_rate_cfg
             line_item_total = round(miles * rate, 2)
+
         elif expense_code == "E110":  # Out-of-town travel (ticket/transport)
             hours = 1
             rate = round(random.uniform(travel_min, travel_max), 2)
             line_item_total = rate
+
         elif expense_code == "E105":  # Telephone
             hours = 1
             rate = round(random.uniform(tel_min, tel_max), 2)
             line_item_total = rate
+
         elif expense_code == "E107":  # Delivery/messenger
             hours = 1
             rate = round(random.uniform(20.0, 100.0), 2)
             line_item_total = rate
+
         elif expense_code == "E108":  # Postage
             hours = 1
             rate = round(random.uniform(5.0, 50.0), 2)
             line_item_total = rate
+
         elif expense_code == "E111":  # Meals
             hours = 1
             rate = round(random.uniform(15.0, 150.0), 2)
             line_item_total = rate
+
         else:
             hours = random.randint(1, 5)
             rate = round(random.uniform(10.0, 150.0), 2)
@@ -474,7 +514,7 @@ def _generate_expenses(expense_count: int, billing_start_date: datetime.date, bi
         rows.append(row)
 
     return rows
-
+    
 def _generate_invoice_data(fee_count: int, expense_count: int, timekeeper_data: List[Dict], client_id: str, law_firm_id: str, invoice_desc: str, billing_start_date: datetime.date, billing_end_date: datetime.date, task_activity_desc: List[Tuple[str, str, str]], major_task_codes: set, max_hours_per_tk_per_day: int, include_block_billed: bool, faker_instance: Faker) -> Tuple[List[Dict], float]:
     """Generate invoice data with fees and expenses."""
     rows = []
