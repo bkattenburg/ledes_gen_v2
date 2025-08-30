@@ -58,6 +58,32 @@ TAX_EXEMPT = {
     "E110","E109","E108","E120","E122","E118","E121","E119","E112","E113","E114"
 }
 DEFAULT_TAX_RATE = 0.085
+
+# Helper: prefer previously generated rows for email/download
+def _rows_for_email(fallback_args: dict | None = None):
+    try:
+        import streamlit as st
+        rows = st.session_state.get('generated_rows')
+        meta = st.session_state.get('generated_invoice_meta') or {}
+        if rows:
+            return rows, meta
+    except Exception:
+        pass
+    if fallback_args:
+        rows, total_amount = _generate_invoice_data(**fallback_args)
+        meta = {
+            'client_id': fallback_args.get('client_id'),
+            'law_firm_id': fallback_args.get('law_firm_id'),
+            'invoice_number': fallback_args.get('invoice_number'),
+            'billing_start': fallback_args.get('billing_start_date') or fallback_args.get('current_start_date'),
+            'billing_end': fallback_args.get('billing_end_date') or fallback_args.get('current_end_date'),
+            'invoice_desc': fallback_args.get('invoice_desc') or fallback_args.get('current_invoice_desc'),
+            'fees_used': fallback_args.get('fee_count') or fallback_args.get('fees_used'),
+            'expenses_used': fallback_args.get('expense_count') or fallback_args.get('expenses_used'),
+        }
+        return rows, meta
+    return [], {}
+
 def slider_or_fixed(label, min_value, max_value, *, value=None, step=1, help=None, format=None):
     """Uses a slider when there's a range; falls back to a fixed number_input when not."""
     min_value = int(min_value); max_value = int(max_value)
@@ -1444,6 +1470,40 @@ if generate_button:
                     current_invoice_desc, current_start_date, current_end_date,
                     task_activity_desc, CONFIG['MAJOR_TASK_CODES'], max_daily_hours, include_block_billed, faker
                 )
+
+                # Persist the generated payload for later email/download
+
+                try:
+
+                    import streamlit as st
+
+                    st.session_state.generated_rows = rows
+
+                    st.session_state.generated_total = float(total_amount) if isinstance(total_amount, (int, float)) else total_amount
+
+                    st.session_state.generated_invoice_meta = {
+
+                        "client_id": locals().get("client_id"),
+
+                        "law_firm_id": locals().get("law_firm_id"),
+
+                        "invoice_number": locals().get("invoice_number"),
+
+                        "billing_start": locals().get("current_start_date") or locals().get("billing_start_date"),
+
+                        "billing_end": locals().get("current_end_date") or locals().get("billing_end_date"),
+
+                        "invoice_desc": locals().get("current_invoice_desc") or locals().get("invoice_desc"),
+
+                        "fees_used": locals().get("fees_used"),
+
+                        "expenses_used": locals().get("expenses_used"),
+
+                    }
+
+                except Exception:
+
+                    pass
                 if spend_agent:
                     rows = _ensure_mandatory_lines(rows, timekeeper_data, current_invoice_desc, client_id, law_firm_id, current_start_date, current_end_date, selected_items)
                 
