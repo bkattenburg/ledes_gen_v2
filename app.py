@@ -1103,14 +1103,11 @@ with tab_objects[0]:
     
 with tab_objects[1]:
     st.markdown("<h2 style='color: #1E1E1E;'>Invoice Details</h2>", unsafe_allow_html=True)
-    st.markdown("<h3 style='color: #1E1E1E;'>Billing Information</h3>", unsafe_allow_html=True)
-            
-
-# ---------- Static Billing ID Profiles (edit in code) ----------
+    # ---------- Static Billing ID Profiles (edit in code) ----------
     ID_PROFILES_STR = """
     Onit ELM|A Onit Inc.|02-4388252|Nelson and Murdock|02-1234567,
     SimpleLegal|Penguin LLC|C004|JDL|JDL001,
-    Unity|Unity Demo|uniti-demo|Gold USA|Gold USA
+    Unity|Unity Demo|uniti-demo|Gold USD|Gold USD
     """.strip()
 
     def _parse_profiles(s: str):
