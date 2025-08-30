@@ -3,13 +3,14 @@ import os, sys
 sys.path.append(os.path.dirname(__file__))
 import pandas as pd
 import random
-import datetime
+#import datetime
 import io
 import os
 import logging
 import re
 import smtplib
-from typing import Optional, List, Dict, Any, Tuple
+import datetime as dt
+#from typing import Optional, List, Dict, Any, Tuple
 from datetime import datetime, date, timedelta
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
