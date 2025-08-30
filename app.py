@@ -1509,3 +1509,34 @@ if generate_button:
                         )
             status.update(label="Invoice generation complete!", state="complete")
 
+# --- Data Sources tab: upload TK.csv and Line Items CSV ---
+with tab_objects[tabs.index("Data Sources")]:
+    st.markdown("<h2 style='color:#1E1E1E;'>Data Sources</h2>", unsafe_allow_html=True)
+    st.write("Upload your Timekeeper CSV and optional Line Item CSV here.")
+
+    with st.expander("Timekeeper CSV (TK.csv)", expanded=True):
+        st.caption("Expected columns (flexible): ID, First, Last, Rate, Role")
+        tk_file = st.file_uploader("Upload TK.csv", type=["csv"], key="tk_csv_upl")
+        if tk_file is not None:
+            try:
+                tk_df = pd.read_csv(tk_file)
+                st.session_state.timekeeper_data = tk_df.to_dict(orient="records")
+                st.success(f"Loaded {len(tk_df)} timekeepers.")
+                st.dataframe(tk_df.head(50), use_container_width=True)
+            except Exception as e:
+                st.error(f"Failed to read TK.csv: {e}")
+
+    with st.expander("Custom Line Items CSV (optional)", expanded=False):
+        st.caption("Provide preset fee/expense rows to use or mix in.")
+        li_file = st.file_uploader("Upload Line Items CSV", type=["csv"], key="li_csv_upl")
+        if li_file is not None:
+            try:
+                li_df = pd.read_csv(li_file)
+                st.session_state.custom_line_items = li_df.to_dict(orient="records")
+                st.session_state.use_custom_line_items = True
+                st.success(f"Loaded {len(li_df)} custom line items.")
+                st.dataframe(li_df.head(50), use_container_width=True)
+            except Exception as e:
+                st.error(f"Failed to read line items CSV: {e}")
+
+    st.info("Tip: Fee controls are enabled once TK.csv is uploaded. You can still generate expenses without timekeepers.")
