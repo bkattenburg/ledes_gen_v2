@@ -3,20 +3,12 @@ import os, sys
 sys.path.append(os.path.dirname(__file__))
 import pandas as pd
 import random
-#import datetime
-import io
-import os
-import streamlit as st
-import os, sys
-sys.path.append(os.path.dirname(__file__))
-import pandas as pd
-import random
-#import datetime
 import io
 import os
 import logging
 import re
 import smtplib
+import datetime as dt
 
 from typing import Optional, List, Dict, Any, Tuple
 from email.mime.text import MIMEText
@@ -32,8 +24,6 @@ from reportlab.lib.units import inch
 from reportlab.lib.enums import TA_LEFT, TA_RIGHT, TA_CENTER
 from PIL import Image as PILImage, ImageDraw, ImageFont
 import zipfile
-
-
 
 # --- Safety Guards to avoid NameError after refactor (static profiles build) ---
 try:
