@@ -3,14 +3,14 @@ import os, sys
 sys.path.append(os.path.dirname(__file__))
 import pandas as pd
 import random
-import datetime as dt
+#import datetime
 import io
 import os
 import logging
 import re
 import smtplib
 
-from typing import Optional, List, Dict, Any, Tuple
+#from typing import Optional, List, Dict, Any, Tuple
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from email.mime.application import MIMEApplication
@@ -215,14 +215,12 @@ def _process_description(description: str, faker_instance: Faker) -> str:
     return description
 
 def _is_valid_client_id(client_id: str) -> bool:
-    """Validate Client ID format (XX-XXXXXXX)."""
-    pattern = r"^\d{2}-\d{7}$"
-    return bool(re.match(pattern, client_id))
+    """Client ID is considered valid if it is a non-empty string."""
+    return bool(str(client_id).strip())
 
 def _is_valid_law_firm_id(law_firm_id: str) -> bool:
-    """Validate Law Firm ID format (XX-XXXXXXX)."""
-    pattern = r"^\d{2}-\d{7}$"
-    return bool(re.match(pattern, law_firm_id))
+    """Law Firm ID is considered valid if it is a non-empty string."""
+    return bool(str(law_firm_id).strip())
 
 def _calculate_max_fees(timekeeper_data: Optional[List[Dict]], billing_start_date: dt.date, billing_end_date: dt.date, max_daily_hours: int) -> int:
     """Calculate maximum feasible fee lines based on timekeeper data and billing period."""
@@ -730,7 +728,7 @@ def _create_pdf_invoice(df: pd.DataFrame, total_amount: float, invoice_number: s
         ]
     ]
     for _, row in df.iterrows():
-        date = row["LINE_ITEM_DATE"]
+        date_str = row["LINE_ITEM_DATE"]
         timekeeper = Paragraph(row["TIMEKEEPER_NAME"] if row["TIMEKEEPER_NAME"] else "N/A", table_data_style)
         task_code = row.get("TASK_CODE", "") if not row["EXPENSE_CODE"] else ""
         activity_code = row.get("ACTIVITY_CODE", "") if not row["EXPENSE_CODE"] else ""
@@ -738,7 +736,7 @@ def _create_pdf_invoice(df: pd.DataFrame, total_amount: float, invoice_number: s
         hours = f"{row['HOURS']:.1f}" if not row["EXPENSE_CODE"] else f"{int(row['HOURS'])}"
         rate = f"${row['RATE']:.2f}" if row["RATE"] else "N/A"
         total = f"${row['LINE_ITEM_TOTAL']:.2f}"
-        data.append([date, task_code, activity_code, timekeeper, description, hours, rate, total])
+        data.append([date_str, task_code, activity_code, timekeeper, description, hours, rate, total])
 
     table = Table(data, colWidths=[0.8 * inch, 0.7 * inch, 0.7 * inch, 1.3 * inch, 1.8 * inch, 0.8 * inch, 0.8 * inch, 0.8 * inch])
     table.setStyle(TableStyle([
@@ -1227,9 +1225,9 @@ with tab_objects[2]:
     spend_agent = st.checkbox("Spend Agent", value=False, help="Ensures selected mandatory line items are included; configure below.")
     
     if timekeeper_data is None:
-        st.error("Please upload a valid timekeeper CSV file to configure fee and expense settings.")
+        st.info("No timekeeper CSV detected. Fee line configuration is disabled, but expenses can still be generated.")
+        max_fees = 0
         fees = 0
-        expenses = 0
     else:
         max_fees = _calculate_max_fees(timekeeper_data, billing_start_date, billing_end_date, 16)
         st.caption(f"Maximum fee lines allowed: {max_fees} (based on timekeepers and billing period)")
@@ -1390,8 +1388,8 @@ else:
 
 # Validation Logic
 is_valid_input = True
-if timekeeper_data is None:
-    st.error("Please upload a valid timekeeper CSV file.")
+if timekeeper_data is None and (("fees" in locals() and fees > 0) or ("fees" in globals() and fees > 0)):
+    st.error("Fee lines require a timekeeper CSV. Upload TK.csv or set fee lines to 0.")
     is_valid_input = False
 if billing_start_date >= billing_end_date:
     st.error("Billing start date must be before end date.")
@@ -1575,4 +1573,6 @@ with tab_objects[tabs.index("Data Sources")]:
 # (Optional but recommended downstream guard when generating)
 # use_cli = st.session_state.get("use_custom_line_items", True) and bool(st.session_state.get("custom_line_items"))
 import datetime as dt
+from typing import Any, Dict, List, Optional, Tuple
+
 st.info("Tip: Fee controls are enabled once TK.csv is uploaded. You can still generate expenses without timekeepers.")
