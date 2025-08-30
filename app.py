@@ -1520,23 +1520,19 @@ with tab_objects[tabs.index("Data Sources")]:
                 st.error(f"Failed to read TK.csv: {e}")
 
     with st.expander("Custom Line Items CSV (optional)", expanded=True):
-    # NEW: toggle appears above the uploader; default is TRUE
-        st.checkbox("Use Custom Line Items?", value=True, key="use_custom_line_items")
-    
-        st.caption("Provide preset fee/expense rows to use or mix in.")
-        # (label tweaked to match the Timekeepers section’s style)
-        li_file = st.file_uploader("Custom Line Items CSV", type=["csv"], key="li_csv_upl")
+    st.caption("Provide preset fee/expense rows to use or mix in.")
+    li_file = st.file_uploader("Custom Line Items CSV", type=["csv"], key="li_csv_upl")
 
     if li_file is not None:
         try:
             li_df = pd.read_csv(li_file)
             st.session_state.custom_line_items = li_df.to_dict(orient="records")
-            # reflect the checkbox state; default True if missing
-            st.session_state.use_custom_line_items = st.session_state.get("use_custom_line_items", True)
-            # Keep the status and count, drop the preview to avoid clutter
             st.success(f"Loaded {len(li_df)} custom line items.")
         except Exception as e:
             st.error(f"Failed to read line items CSV: {e}")
+
+    # Compatibility shim: set this flag based on presence of data (no widget uses this key now)
+    st.session_state.use_custom_line_items = bool(st.session_state.get("custom_line_items"))
 
 # (Optional but recommended downstream guard when generating)
 # use_cli = st.session_state.get("use_custom_line_items", True) and bool(st.session_state.get("custom_line_items"))
